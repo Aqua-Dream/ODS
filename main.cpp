@@ -54,10 +54,10 @@ void OneLevelExp(int argc, char *argv[])
     vector<uint64_t> output;
     for(uint64_t i=0;i<N;i++)
         input[i] = N-i;
-    random_shuffle(input.begin(), input.end());
+    //random_shuffle(input.begin(), input.end());
     auto start = high_resolution_clock::now();
-    ods.Sort(input, output, OneLevel::TIGHT);
-    CheckOutput(output, OneLevel::TIGHT);
+    ods.Sort(input, output, OneLevel::LOOSE);
+    CheckOutput(output, OneLevel::LOOSE);
     cout << "Num IOs: " << (float)iom.GetNumIOs()*B/N << "*N/B" << endl;
     iom.ClearIO();
     auto end = high_resolution_clock::now();

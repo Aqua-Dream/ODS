@@ -8,6 +8,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(SOURCE_FILES main.cpp Feistel.cpp memory.cpp sampling.cpp global.cpp ODS.cpp argsolver.cpp)
 
+find_package(OpenMP REQUIRED)
+if (OPENMP_FOUND)
+	message("OPENMP FOUND")
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
 
 # Your-external "mylib", add GLOBAL if the imported library is located in directories above the current.
 add_library( blake3 SHARED IMPORTED)

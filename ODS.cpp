@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include "Feistel.h"
+#include <omp.h>
 
 // compute the q-quantile of the first n elements in data, and put them at the end of data
 // length of quantile: q-1
@@ -154,6 +155,7 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     for (uint64_t i = 0; i < num_memloads; i++)
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
+        #pragma omp parallel for num_threads(32)
         for (uint64_t j = 0; j < actual_load/B; j++)
         {
             uint64_t blockId = fs.permute(j + i * memload/B);
