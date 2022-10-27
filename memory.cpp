@@ -71,13 +71,18 @@ void IOManager::DataTransfer(VectorSlice &from, VectorSlice &to)
 }
 
 uint64_t IOManager::GetNumIOs(){ return this->m_numIOs; }
-void IOManager::print(int limit)
+void IOManager::PrintInternalMemory(int limit)
 {
     if(limit > m_intmem.size())
         limit = m_intmem.size();
     for(int i=0;i<limit-1;i++)
         std::cout << m_intmem[i] << ", ";
     std::cout << m_intmem[limit-1] << std::endl;
+}
+
+void IOManager::ClearIO()
+{
+    m_numIOs = 0;
 }
 
 std::vector<uint64_t>& IOManager::GetInternalMemory(){ return this->m_intmem; }

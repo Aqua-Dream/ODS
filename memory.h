@@ -30,7 +30,8 @@ public:
     void DataTransfer(VectorSlice &from, VectorSlice &to);
     uint64_t GetNumIOs();
     std::vector<uint64_t>& GetInternalMemory();
-    void print(int limit=100);
+    void PrintInternalMemory(int limit=100);
+    void ClearIO();
 private:
     uint64_t m_numIOs;
     uint64_t m_blocksize;

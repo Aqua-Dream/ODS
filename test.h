@@ -9,6 +9,7 @@ using namespace std;
 #include "sampling.h"
 #include "ODS.h"
 #include "argsolver.h"
+#include <cassert>
 
 void TestSampling()
 {
@@ -118,4 +119,32 @@ void TestQuantile()
     for (auto v : data)
         cout << v << ",";
     cout << endl;
+}
+
+
+
+void TestOneLevelPartition()
+{
+    uint64_t M = 10000, B = 1, N = 10234;
+    IOManager iom(M, B);
+    vector<uint64_t> data(N);
+    vector<uint64_t> out;
+    for (int i = 0; i < N; i++)
+        data[i] = N - i;
+    OneLevel ods(iom, N, B, 4);
+    ods.DecidePivots(data, OneLevel::LOOSE);
+    auto buckets = ods.FirstLevelPartition(data);
+
+    ods.FinalSorting(buckets, out, OneLevel::TIGHT);
+    for (int i = 0; i < out.size(); i++)
+        assert(out[i] == i + 1);
+
+    ods.FinalSorting(buckets, out, OneLevel::LOOSE);
+    int v = 1;
+    for (int i = 0; i < out.size(); i++)
+    {
+        if (out[i] != DUMMY)
+            assert(out[i] == v++);
+    }
+    cout << "test passed" << endl;
 }
