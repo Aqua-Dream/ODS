@@ -122,6 +122,11 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
     if (beta >= 1)
         throw std::invalid_argument("Invalid parameters for one-level sorting!");
     p = (int)ceil((1 + 2 * beta) * N / M);
+    uint64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
+    uint64_t num_memloads = ceil((float)N / memload);
+    uint64_t unit = ceil(float(M) / p);
+    if(unit * num_memloads > M)
+        p++;
 }
 
 void OneLevel::DecidePivots(std::vector<uint64_t> &extint, SortType sorttype)
@@ -149,9 +154,9 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     for (uint64_t i = 0; i < num_memloads; i++)
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
-        for (uint64_t j = 0; j < actual_load; j++)
+        for (uint64_t j = 0; j < actual_load/B; j++)
         {
-            uint64_t blockId = fs.permute(j + i * memload);
+            uint64_t blockId = fs.permute(j + i * memload/B);
             VectorSlice extslice(extint, blockId * B, B);
             VectorSlice intslice(m_intmem, j * B, B);
             m_iom.DataTransfer(extslice, intslice);

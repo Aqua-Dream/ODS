@@ -38,9 +38,9 @@ void OneLevelExp(int argc, char *argv[])
 {
     uint64_t M, N, B, c, m;
     // N=128*M by default
-    c = argc > 1 ? atoll(argv[1]) : 128;
+    c = argc > 1 ? atoll(argv[1]) : 16;
     // M=128MB by default
-    m = argc > 2 ? atoll(argv[2]) : 128;
+    m = argc > 2 ? atoll(argv[2]) : 16;
     M = (m<<20)/ sizeof(uint64_t);
     // B=4 by default
     B = argc > 3 ? atoll(argv[3]) : 4;
