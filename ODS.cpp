@@ -155,14 +155,14 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     for (uint64_t i = 0; i < num_memloads; i++)
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
+        uint64_t blocks_thisload = actual_load / B;
         #pragma omp parallel for num_threads(32)
-        for (uint64_t j = 0; j < actual_load/B; j++)
+        for (uint64_t j = 0; j < blocks_thisload; j++)
         {
             uint64_t blockId = fs.permute(j + i * memload/B);
-            VectorSlice extslice(extint, blockId * B, B);
-            VectorSlice intslice(m_intmem, j * B, B);
-            m_iom.DataTransfer(extslice, intslice);
+            std::copy_n(extint.begin()+blockId * B,B,m_intmem.begin()+j*B);
         }
+        m_iom.m_numIOs += blocks_thisload;
         VectorSlice intdata(m_intmem, 0, actual_load);
         InternalPartition(intdata, pivots, posList);
         for (int j = 0; j < p; j++)

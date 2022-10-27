@@ -32,8 +32,8 @@ public:
     std::vector<uint64_t>& GetInternalMemory();
     void PrintInternalMemory(int limit=100);
     void ClearIO();
-private:
     uint64_t m_numIOs;
+private:
     uint64_t m_blocksize;
     std::vector<uint64_t> m_intmem;
 };

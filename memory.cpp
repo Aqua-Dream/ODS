@@ -62,7 +62,6 @@ IOManager::IOManager(uint64_t memory_size, uint64_t block_size)
 void IOManager::DataTransfer(VectorSlice &from, VectorSlice &to)
 {
     to.CopyDataFrom(from, true);
-#pragma omp critical
     m_numIOs += (int)ceil(to.size() / m_blocksize);
 }
 
