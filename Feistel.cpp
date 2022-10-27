@@ -18,7 +18,7 @@ uint64_t Feistel::encrypt(uint64_t input)
     uint64_t tmp;
     uint64_t buffer[2];
     blake3_hasher hasher;
-    for (uint64_t i = 0; i < num_rounds; i++)
+    for (int i = 0; i < num_rounds; i++)
     {
         buffer[0] = r;
         buffer[1] = i;
@@ -26,7 +26,7 @@ uint64_t Feistel::encrypt(uint64_t input)
         blake3_hasher_update(&hasher, buffer, 2 * sizeof(uint64_t));
         blake3_hasher_finalize(&hasher, (uint8_t *)buffer, 2 * sizeof(uint64_t));
         tmp = r;
-        r = l ^ buffer[1] & ander;
+        r = (l ^ buffer[1]) & ander;
         l = tmp;
     }
     return (l << base) | r;

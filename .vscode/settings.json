@@ -60,6 +60,7 @@
         "cfenv": "cpp",
         "cinttypes": "cpp",
         "cstdbool": "cpp",
-        "version": "cpp"
+        "version": "cpp",
+        "chrono": "cpp"
     }
 }

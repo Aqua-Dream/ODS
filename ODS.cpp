@@ -163,7 +163,7 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
         }
         VectorSlice intdata(m_intmem, 0, actual_load);
         InternalPartition(intdata, pivots, posList);
-        for (uint64_t j = 0; j < p; j++)
+        for (int j = 0; j < p; j++)
         {
             uint64_t prevPos = (j == 0) ? 0 : posList[j - 1];
             uint64_t endPos = (j == p - 1) ? actual_load : posList[j];
@@ -206,5 +206,5 @@ void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout
     auto buckets = FirstLevelPartition(extint);
     FinalSorting(buckets, extout, sorttype);
     for(auto vs: buckets)
-        delete vs;
+       delete vs;
 }
