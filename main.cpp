@@ -48,6 +48,7 @@ void OneLevelExp(int argc, char *argv[])
     B = argc > 3 ? atoll(argv[3]) : 4;
     N = M * c;
     int sigma = 40;
+    Tick("Total");
     IOManager iom (M,B);
     OneLevel ods(iom,N,B,sigma);
     vector<uint64_t> input(N);
@@ -55,14 +56,11 @@ void OneLevelExp(int argc, char *argv[])
     for(uint64_t i=0;i<N;i++)
         input[i] = N-i;
     //random_shuffle(input.begin(), input.end());
-    auto start = high_resolution_clock::now();
     ods.Sort(input, output, OneLevel::LOOSE);
     CheckOutput(output, OneLevel::LOOSE);
+    Tick("Total");
     cout << "Num IOs: " << (float)iom.GetNumIOs()*B/N << "*N/B" << endl;
     iom.ClearIO();
-    auto end = high_resolution_clock::now();
-    auto duration = duration_cast<milliseconds>(end - start);
-    cout << "Time: " << duration.count()  << " ms" << endl;
 }
 
 

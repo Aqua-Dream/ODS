@@ -86,7 +86,7 @@ void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posL
     VectorSlice dataRight(data, dataIdx, data.size() - dataIdx);
     VectorSlice pivotsRight(pivots, pivotIdx + 1, pivots.size() - pivotIdx - 1);
     VectorSlice posRight(posList, pivotIdx + 1, pivots.size() - pivotIdx - 1);
-    //assert(num_threads <= NUM_THREADS);
+
     if (leftToDo && rightToDo && num_threads > 1)
     {
 #pragma omp parallel
@@ -247,9 +247,17 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
 
 void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout, SortType sorttype)
 {
+    Tick("Decide pivot");
     DecidePivots(extint, sorttype);
+    Tick("Decide pivot");
+
+    Tick("Partition");
     auto buckets = FirstLevelPartition(extint);
+    Tick("Partition");
+
+    Tick("Final sorting");
     FinalSorting(buckets, extout, sorttype);
+    Tick("Final sorting");
     for (auto vs : buckets)
         delete vs;
 }

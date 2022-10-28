@@ -61,6 +61,7 @@
         "cinttypes": "cpp",
         "cstdbool": "cpp",
         "version": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "ratio": "cpp"
     }
 }
