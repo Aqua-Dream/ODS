@@ -8,6 +8,7 @@
 #include "Feistel.h"
 #include <omp.h>
 #include <iostream>
+#include <boost/sort/sort.hpp>
 
 // compute the q-quantile of the first n elements in data, and put them at the end of data
 // length of quantile: q-1
@@ -87,7 +88,7 @@ void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posL
     VectorSlice pivotsRight(pivots, pivotIdx + 1, pivots.size() - pivotIdx - 1);
     VectorSlice posRight(posList, pivotIdx + 1, pivots.size() - pivotIdx - 1);
 
-    if (leftToDo && rightToDo && num_threads > 1)
+    if (leftToDo && rightToDo && omp_get_num_threads() < NUM_THREADS ) //num_threads > 1)
     {
         int left_threads = round(num_threads * dataLeft.size() / (dataLeft.size() + dataRight.size()));
         if (left_threads < 1)
@@ -241,7 +242,8 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
         m_iom.DataTransfer(extslice, intslice);
         auto realslice = Compact(intslice);
         // std::sort(realslice.begin(), realslice.end());
-        InternalSortingMultiThread(realslice);
+        //InternalSortingMultiThread(realslice);
+        boost::sort::block_indirect_sort(realslice.begin(), realslice.end(), NUM_THREADS);
         uint64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
         m_iom.DataTransfer(realslice, outslice);
