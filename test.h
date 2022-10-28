@@ -132,7 +132,7 @@ void TestOneLevelPartition()
     for (int i = 0; i < N; i++)
         data[i] = N - i;
     OneLevel ods(iom, N, B, 4);
-    ods.DecidePivots(data, OneLevel::LOOSE);
+    ods.GetPivots(data, OneLevel::LOOSE);
     auto buckets = ods.FirstLevelPartition(data);
 
     ods.FinalSorting(buckets, out, OneLevel::TIGHT);

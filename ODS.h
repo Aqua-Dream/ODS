@@ -15,7 +15,7 @@ public:
     enum SortType{ TIGHT,LOOSE };
     // failure probability bounded by 2^(-sigma)
     OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma);
-    void DecidePivots(std::vector<uint64_t> &extint, SortType sorttype);
+    void GetPivots(std::vector<uint64_t> &extint, SortType sorttype);
     // extout should not be the same with extin
     std::vector<std::vector<uint64_t>*> FirstLevelPartition(std::vector<uint64_t> &extint);
     void FinalSorting(std::vector<std::vector<uint64_t>*> &buckets, std::vector<uint64_t> &out, SortType sorttype);

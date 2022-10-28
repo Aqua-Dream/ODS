@@ -10,29 +10,26 @@
 #include <iostream>
 #include <boost/sort/sort.hpp>
 
-// compute the q-quantile of the first n elements in data, and put them at the end of data
+// return the q-quantile of the first n elements in data
 // length of quantile: q-1
-void Quantile(std::vector<uint64_t> &data, uint64_t n, int q)
+std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
 {
-    uint64_t M = data.size();
+    uint64_t n = vs.size();
     uint64_t step = n / q;
     int remain = n % q;
-    uint64_t pivotId = M - 1;
-    // dataIdx<n<=M<int_max, so there is no overflow
-    int dataIdx = n;
-    int i = 0;
+    std::vector<uint64_t> pivots(q - 1);
+    int dataIdx = -1;
+    int i = -1;
     for (; i < remain; i++)
     {
-        dataIdx -= step + 1;
-        data[pivotId--] = data[dataIdx];
+        dataIdx += step + 1;
+        pivots[i] = vs[dataIdx];
     }
     for (; i < q - 1; i++)
     {
-        dataIdx -= step;
-        data[pivotId--] = data[dataIdx];
+        dataIdx += step;
+        pivots[i] = vs[dataIdx];
     }
-    assert(dataIdx == step);
-    assert(pivotId == M - q);
 }
 
 // move dummy elements to the end; return the slice of real elements
@@ -72,84 +69,6 @@ uint64_t InternalPartitionLevel(VectorSlice &data, uint64_t pivot)
     return i;
 }
 
-void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList, int num_threads = NUM_THREADS)
-{
-    uint64_t pivotIdx, pivot, dataIdx;
-    pivotIdx = pivots.size() >> 1;
-    pivot = pivots[pivotIdx];
-    dataIdx = InternalPartitionLevel(data, pivot);
-    posList[pivotIdx] = data.GetStartPos() + dataIdx;
-    bool leftToDo = (dataIdx > 0 && pivotIdx > 0);
-    bool rightToDo = (dataIdx < data.size() && pivotIdx + 1 < pivots.size());
-    VectorSlice dataLeft(data, 0, dataIdx);
-    VectorSlice pivotsLeft(pivots, 0, pivotIdx);
-    VectorSlice posLeft(posList, 0, pivotIdx);
-    VectorSlice dataRight(data, dataIdx, data.size() - dataIdx);
-    VectorSlice pivotsRight(pivots, pivotIdx + 1, pivots.size() - pivotIdx - 1);
-    VectorSlice posRight(posList, pivotIdx + 1, pivots.size() - pivotIdx - 1);
-
-    if (leftToDo && rightToDo && omp_get_num_threads() < NUM_THREADS ) //num_threads > 1)
-    {
-        int left_threads = round(num_threads * dataLeft.size() / (dataLeft.size() + dataRight.size()));
-        if (left_threads < 1)
-            left_threads = 1;
-        if (left_threads >= num_threads)
-            left_threads = num_threads - 1;
-        int right_threads = num_threads - left_threads;
-#pragma omp parallel
-#pragma omp single nowait
-        {
-#pragma omp task
-            InternalPartition(dataLeft, pivotsLeft, posLeft, left_threads);
-#pragma omp task
-            InternalPartition(dataRight, pivotsRight, posRight, right_threads);
-        }
-        return;
-    }
-
-    if (leftToDo)
-        InternalPartition(dataLeft, pivotsLeft, posLeft, num_threads);
-    else if (dataIdx <= 0)
-    {
-        for (uint64_t i = 0; i < pivotIdx; i++)
-            posList[i] = data.GetStartPos();
-    }
-    if (rightToDo)
-        InternalPartition(dataRight, pivotsRight, posRight, num_threads);
-
-    else if (dataIdx >= data.size())
-    {
-        for (uint64_t i = pivotIdx + 1; i < posList.size(); i++)
-            posList[i] = data.GetEndPos();
-    }
-}
-
-void InternalSortingMultiThread(VectorSlice &data)
-{
-    const int num_threads = NUM_THREADS;
-    if (num_threads == 1)
-    {
-        std::sort(data.begin(), data.end());
-        return;
-    }
-    int sample_size = num_threads * (1 + log2(num_threads));
-    std::vector<uint64_t> sample(sample_size), posListVec(num_threads - 1);
-    for (int i = 0; i < sample_size; i++)
-        sample[i] = data[i * (data.size() - 1) / sample_size];
-    std::sort(sample.begin(), sample.end());
-    Quantile(sample, sample_size, num_threads);
-    VectorSlice pivots(sample, sample_size - num_threads + 1, num_threads - 1);
-    VectorSlice posList(posListVec, 0, num_threads - 1);
-    InternalPartition(data, pivots, posList);
-#pragma omp parallel for num_threads(NUM_THREADS)
-    for (int i = 0; i < num_threads; i++)
-    {
-        auto istart = data.begin() + (i == 0 ? 0 : posList[i - 1]);
-        auto iend = (i == num_threads - 1) ? data.end() : data.begin() + posList[i];
-        std::sort(istart, iend);
-    }
-}
-
 OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma)
     : N{dataSize}, M{iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}
 {
@@ -177,13 +96,14 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
         p++;
 }
 
-void OneLevel::DecidePivots(std::vector<uint64_t> &extint, SortType sorttype)
+void OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
 {
     uint64_t n = (int)ceil(alpha * N);
     SmallSample(m_iom, extint, B, n, sorttype == TIGHT);
-    std::sort(m_intmem.begin(), m_intmem.begin() + n);
+    VectorSlice sample(m_intmem, 0, n);
+    boost::sort::block_indirect_sort(sample.begin(), sample.end(), NUM_THREADS);
     // move pivots to the end of the memory
-    Quantile(m_intmem, n, p);
+    return GetQuantile(m_intmem, n, p);
 }
 
 std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<uint64_t> &extint)
@@ -197,7 +117,6 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     for (int i = 0; i < p; i++)
         buckets[i] = new std::vector<uint64_t>(unit * num_memloads);
     VectorSlice pivots(m_intmem, M - p + 1, p - 1);
-    VectorSlice posList(m_intmem, M - 2 * (p - 1), p - 1);
     Feistel fs(N / B);
     for (uint64_t i = 0; i < num_memloads; i++)
     {
@@ -211,6 +130,7 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
         }
         m_iom.m_numIOs += blocks_thisload;
         VectorSlice intdata(m_intmem, 0, actual_load);
+        boost::sort::block_indirect_sort(intdata.begin(), intdata.end(), NUM_THREADS);
         InternalPartition(intdata, pivots, posList);
         for (int j = 0; j < p; j++)
         {
@@ -241,8 +161,6 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
         VectorSlice intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
         auto realslice = Compact(intslice);
-        // std::sort(realslice.begin(), realslice.end());
-        //InternalSortingMultiThread(realslice);
         boost::sort::block_indirect_sort(realslice.begin(), realslice.end(), NUM_THREADS);
         uint64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
@@ -254,7 +172,7 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
 void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout, SortType sorttype)
 {
     Tick("Decide pivot");
-    DecidePivots(extint, sorttype);
+    GetPivots(extint, sorttype);
     Tick("Decide pivot");
 
     Tick("Partition");
