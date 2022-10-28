@@ -89,15 +89,19 @@ void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posL
 
     if (leftToDo && rightToDo && num_threads > 1)
     {
+        int left_threads = round(num_threads * dataLeft.size() / (dataLeft.size() + dataRight.size()));
+        if (left_threads < 1)
+            left_threads = 1;
+        if (left_threads >= num_threads)
+            left_threads = num_threads - 1;
+        int right_threads = num_threads - left_threads;
 #pragma omp parallel
+#pragma omp single nowait
         {
-#pragma omp single
-            {
 #pragma omp task
-                InternalPartition(dataLeft, pivotsLeft, posLeft, num_threads >> 1);
+            InternalPartition(dataLeft, pivotsLeft, posLeft, left_threads);
 #pragma omp task
-                InternalPartition(dataRight, pivotsRight, posRight, num_threads - (num_threads >> 1));
-            }
+            InternalPartition(dataRight, pivotsRight, posRight, right_threads);
         }
         return;
     }
