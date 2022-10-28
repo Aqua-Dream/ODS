@@ -7,6 +7,8 @@
 #include <cassert>
 #include "Feistel.h"
 #include <omp.h>
+#include <iostream>
+
 
 // compute the q-quantile of the first n elements in data, and put them at the end of data
 // length of quantile: q-1
@@ -103,6 +105,27 @@ void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posL
     }
 }
 
+void InternalSortingMultiThread(VectorSlice &data)
+{
+    auto num_threads = omp_get_num_threads();
+    std::cout << "Num threads: " << num_threads << std::endl;
+    if (num_threads <= 2)   num_threads = 2;
+    int sample_size = num_threads * (1+log2(num_threads));
+    std::vector<uint64_t> sample(sample_size), posListVec(num_threads-1);
+    std::copy_n(data.begin(), sample_size, sample.begin());
+    Quantile(sample, sample_size, num_threads);
+    VectorSlice pivots(sample, sample_size-num_threads+1, num_threads-1);
+    VectorSlice posList(posListVec, 0, num_threads-1);
+    InternalPartition(data, pivots, posList);
+    #pragma omp parallel for
+    for(int i=0;i<num_threads;i++)
+    {
+        auto istart = data.begin() + (i==0?0:posList[i-1]);
+        auto iend = (i==num_threads-1)?data.end() : data.begin()+posList[i];
+        std::sort(istart, iend);
+    }
+}
+
 OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma)
     : N{dataSize}, M{iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}
 {
@@ -156,7 +179,7 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
         uint64_t blocks_thisload = actual_load / B;
-        #pragma omp parallel for num_threads(32)
+        #pragma omp parallel for
         for (uint64_t j = 0; j < blocks_thisload; j++)
         {
             uint64_t blockId = fs.permute(j + i * memload/B);
@@ -194,7 +217,8 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
         VectorSlice intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
         auto realslice = Compact(intslice);
-        std::sort(realslice.begin(), realslice.end());
+        //std::sort(realslice.begin(), realslice.end());
+        InternalSortingMultiThread(realslice);
         uint64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
         m_iom.DataTransfer(realslice, outslice);
