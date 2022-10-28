@@ -71,32 +71,47 @@ uint64_t InternalPartitionLevel(VectorSlice &data, uint64_t pivot)
     return i;
 }
 
-void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList)
+void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList, int num_threads = NUM_THREADS)
 {
     uint64_t pivotIdx, pivot, dataIdx;
     pivotIdx = pivots.size() >> 1;
     pivot = pivots[pivotIdx];
     dataIdx = InternalPartitionLevel(data, pivot);
     posList[pivotIdx] = data.GetStartPos() + dataIdx;
-    if (dataIdx > 0 && pivotIdx > 0)
+    bool leftToDo = (dataIdx > 0 && pivotIdx > 0);
+    bool rightToDo = (dataIdx < data.size() && pivotIdx + 1 < pivots.size());
+    VectorSlice dataLeft(data, 0, dataIdx);
+    VectorSlice pivotsLeft(pivots, 0, pivotIdx);
+    VectorSlice posLeft(posList, 0, pivotIdx);
+    VectorSlice dataRight(data, dataIdx, data.size() - dataIdx);
+    VectorSlice pivotsRight(pivots, pivotIdx + 1, pivots.size() - pivotIdx - 1);
+    VectorSlice posRight(posList, pivotIdx + 1, pivots.size() - pivotIdx - 1);
+    //assert(num_threads <= NUM_THREADS);
+    if (leftToDo && rightToDo && num_threads > 1)
     {
-        VectorSlice dataLeft(data, 0, dataIdx);
-        VectorSlice pivotsLeft(pivots, 0, pivotIdx);
-        VectorSlice posLeft(posList, 0, pivotIdx);
-        InternalPartition(dataLeft, pivotsLeft, posLeft);
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+#pragma omp task
+                InternalPartition(dataLeft, pivotsLeft, posLeft, num_threads >> 1);
+#pragma omp task
+                InternalPartition(dataRight, pivotsRight, posRight, num_threads - (num_threads >> 1));
+            }
+        }
+        return;
     }
+
+    if (leftToDo)
+        InternalPartition(dataLeft, pivotsLeft, posLeft, num_threads);
     else if (dataIdx <= 0)
     {
         for (uint64_t i = 0; i < pivotIdx; i++)
             posList[i] = data.GetStartPos();
     }
-    if (dataIdx < data.size() && pivotIdx + 1 < pivots.size())
-    {
-        VectorSlice dataRight(data, dataIdx, data.size() - dataIdx);
-        VectorSlice pivotsRight(pivots, pivotIdx + 1, pivots.size() - pivotIdx - 1);
-        VectorSlice posRight(posList, pivotIdx + 1, pivots.size() - pivotIdx - 1);
-        InternalPartition(dataRight, pivotsRight, posRight);
-    }
+    if (rightToDo)
+        InternalPartition(dataRight, pivotsRight, posRight, num_threads);
+
     else if (dataIdx >= data.size())
     {
         for (uint64_t i = pivotIdx + 1; i < posList.size(); i++)
