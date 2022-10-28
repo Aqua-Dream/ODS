@@ -68,6 +68,7 @@ void OneLevelExp(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    cout << "Number of threads: " << NUM_THREADS << endl;
     OneLevelExp(argc, argv);
     return 0;
 }
