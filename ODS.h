@@ -4,9 +4,9 @@
 #include "memory.h"
 #include "global.h"
 
-void Quantile(std::vector<uint64_t>& data, uint64_t n, int q); // for test only
+//void Quantile(std::vector<uint64_t>& data, uint64_t n, int q); // for test only
 
-void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList);
+//void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList);
 
 
 class OneLevel
