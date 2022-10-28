@@ -9,7 +9,6 @@
 #include <omp.h>
 #include <iostream>
 
-
 // compute the q-quantile of the first n elements in data, and put them at the end of data
 // length of quantile: q-1
 void Quantile(std::vector<uint64_t> &data, uint64_t n, int q)
@@ -108,23 +107,25 @@ void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posL
 void InternalSortingMultiThread(VectorSlice &data)
 {
     const int num_threads = NUM_THREADS;
-    if(num_threads == 1)
+    if (num_threads == 1)
     {
         std::sort(data.begin(), data.end());
         return;
     }
-    int sample_size = num_threads * (1+log2(num_threads));
-    std::vector<uint64_t> sample(sample_size), posListVec(num_threads-1);
-    std::copy_n(data.begin(), sample_size, sample.begin());
+    int sample_size = num_threads * (1 + log2(num_threads));
+    std::vector<uint64_t> sample(sample_size), posListVec(num_threads - 1);
+    for (int i = 0; i < sample_size; i++)
+        sample[i] = data[i * (data.size() - 1) / sample_size];
+    std::sort(sample.begin(), sample.end());
     Quantile(sample, sample_size, num_threads);
-    VectorSlice pivots(sample, sample_size-num_threads+1, num_threads-1);
-    VectorSlice posList(posListVec, 0, num_threads-1);
+    VectorSlice pivots(sample, sample_size - num_threads + 1, num_threads - 1);
+    VectorSlice posList(posListVec, 0, num_threads - 1);
     InternalPartition(data, pivots, posList);
-    #pragma omp parallel for num_threads(NUM_THREADS)
-    for(int i=0;i<num_threads;i++)
+#pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < num_threads; i++)
     {
-        auto istart = data.begin() + (i==0?0:posList[i-1]);
-        auto iend = (i==num_threads-1)?data.end() : data.begin()+posList[i];
+        auto istart = data.begin() + (i == 0 ? 0 : posList[i - 1]);
+        auto iend = (i == num_threads - 1) ? data.end() : data.begin() + posList[i];
         std::sort(istart, iend);
     }
 }
@@ -152,7 +153,7 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
     uint64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
     uint64_t num_memloads = ceil((float)N / memload);
     uint64_t unit = ceil(float(M) / p);
-    if(unit * num_memloads > M)
+    if (unit * num_memloads > M)
         p++;
 }
 
@@ -182,11 +183,11 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
         uint64_t blocks_thisload = actual_load / B;
-        #pragma omp parallel for num_threads(NUM_THREADS)
+#pragma omp parallel for num_threads(NUM_THREADS)
         for (uint64_t j = 0; j < blocks_thisload; j++)
         {
-            uint64_t blockId = fs.permute(j + i * memload/B);
-            std::copy_n(extint.begin()+blockId * B,B,m_intmem.begin()+j*B);
+            uint64_t blockId = fs.permute(j + i * memload / B);
+            std::copy_n(extint.begin() + blockId * B, B, m_intmem.begin() + j * B);
         }
         m_iom.m_numIOs += blocks_thisload;
         VectorSlice intdata(m_intmem, 0, actual_load);
@@ -220,7 +221,7 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
         VectorSlice intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
         auto realslice = Compact(intslice);
-        //std::sort(realslice.begin(), realslice.end());
+        // std::sort(realslice.begin(), realslice.end());
         InternalSortingMultiThread(realslice);
         uint64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
@@ -234,6 +235,6 @@ void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout
     DecidePivots(extint, sorttype);
     auto buckets = FirstLevelPartition(extint);
     FinalSorting(buckets, extout, sorttype);
-    for(auto vs: buckets)
-       delete vs;
+    for (auto vs : buckets)
+        delete vs;
 }
