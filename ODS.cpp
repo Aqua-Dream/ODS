@@ -10,22 +10,6 @@
 #include <iostream>
 #include <boost/sort/sort.hpp>
 
-class ThreadSafeRNG
-{
-public:
-    typedef size_t result_type;
-    ThreadSafeRNG(unsigned int seed=0) : seed{seed} {};
-    static size_t min() { return 0; }
-    static size_t max() { return RAND_MAX; }
-    size_t operator()()
-    {
-        return rand_r(&seed);
-    }
-
-private:
-    unsigned int seed;
-};
-
 // return the q-quantile of the first n elements in data
 // length of quantile: q-1
 std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
@@ -102,9 +86,9 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
     extout.resize((uint64_t)(1.5 * alpha * N));
     std::random_device dev;
     std::binomial_distribution<int> binom(B, alpha);
-    std::vector<ThreadSafeRNG> rngs(NUM_THREADS);
+    std::vector<std::mt19937> rngs(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; i++)
-        rngs[i] = ThreadSafeRNG(dev());
+        rngs[i] = std::mt19937(dev());
     for (uint64_t extPos = 0; extPos < N; extPos += M)
     {
         uint64_t memload = N - extPos;
@@ -116,14 +100,15 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
                                    : num_IOs) num_threads(NUM_THREADS)
         for (uint64_t j = 0; j < memload / B; j++)
         {
-            uint64_t num_to_sample = binom(rngs[omp_get_thread_num()]);
+            auto rng = rngs[omp_get_thread_num()];
+            uint64_t num_to_sample = binom(rng);
             VectorSlice intslice(m_intmem, j * B, B);
             if (sorttype == SortType::TIGHT || num_to_sample > 0)
             {
                 num_IOs++;
                 VectorSlice extslice(extin, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
-                std::random_shuffle(intslice.begin(), intslice.end());
+                std::shuffle(intslice.begin(), intslice.end(), rng);
                 std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
             }
         }
