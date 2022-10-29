@@ -13,8 +13,10 @@ if (OPENMP_FOUND)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-    endif()
 endif()
+
+find_package(Boost COMPONENTS program_options REQUIRED)
+INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 
 # Your-external "mylib", add GLOBAL if the imported library is located in directories above the current.
 add_library( blake3 SHARED IMPORTED)
@@ -24,3 +26,4 @@ set_target_properties(blake3 PROPERTIES IMPORTED_LOCATION ${ODS_SOURCE_ROOT}/lib
 add_executable(main ${SOURCE_FILES})
 
 target_link_libraries(main blake3)
+target_link_libraries(main ${Boost_LIBRARIES})

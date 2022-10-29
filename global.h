@@ -7,4 +7,4 @@ uint64_t RandRange(uint64_t start, uint64_t end);
 void Tick(std::string name);
 
 const uint64_t DUMMY = 0xCCCCCCCC; 
-int NUM_THREADS;
+extern int NUM_THREADS;

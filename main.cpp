@@ -12,16 +12,16 @@
 using namespace std::chrono;
 
 using namespace std;
+namespace po = boost::program_options;
 
-void read_options(int argc, char *argv[])
+po::variables_map read_options(int argc, char *argv[])
 {
-    namespace po = boost::program_options;
     int m, c;
+    po::variables_map vm;
     try
     {
         po::options_description desc("Allowed options");
-        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(8), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(8), "The value N/M")("block_size,B", po::value<uint64_t>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>()->default_value(4), "Number of threads");
-        po::variables_map vm;
+        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(16), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(8), "The value N/M")("block_size,B", po::value<uint64_t>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>(&NUM_THREADS)->default_value(4), "Number of threads")("sigma,s", po::value<int>()->default_value(40), "Failure probability upper bound: 2^(-sigma)");
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
         if (vm.count("help"))
@@ -40,6 +40,7 @@ void read_options(int argc, char *argv[])
         cerr << "Exception of unknown type!\n";
         exit(-1);
     }
+    return vm;
 }
 
 void CheckOutput(vector<uint64_t> &output, OneLevel::SortType sorttype)
@@ -58,11 +59,12 @@ void CheckOutput(vector<uint64_t> &output, OneLevel::SortType sorttype)
 // arg2: internal memory size (in terms of MB), default: 128
 // arg3: block size (in terms of elemens), default: 128
 
-void OneLevelExp(int argc, char *argv[])
+void OneLevelExp(po::variables_map vm)
 {
-    uint64_t M, N, B, c, m;
-    read_options(argc, argv,N,M,B);
-    int sigma = 40;
+    uint64_t M = (vm["m"].as<int>()<<20)/sizeof(uint64_t);
+    uint64_t N = vm["c"].as<int>() * M;
+    uint64_t B = vm["block_size"].as<uint64_t> ();
+    int sigma = vm["sigma"].as<int>();
     Tick("Total");
     IOManager iom(M, B);
     OneLevel ods(iom, N, B, sigma);
@@ -80,7 +82,8 @@ void OneLevelExp(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    auto vm = read_options(argc, argv);
     cout << "Number of threads: " << NUM_THREADS << endl;
-    OneLevelExp(argc, argv);
+    OneLevelExp(vm);
     return 0;
 }

@@ -19,7 +19,7 @@ std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
     int remain = n % q;
     std::vector<uint64_t> pivots(q - 1);
     int dataIdx = -1;
-    int i = -1;
+    int i = 0;
     for (; i < remain; i++)
     {
         dataIdx += step + 1;
@@ -30,6 +30,7 @@ std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
         dataIdx += step;
         pivots[i] = vs[dataIdx];
     }
+    return pivots;
 }
 
 // move dummy elements to the end; return the slice of real elements
@@ -96,17 +97,17 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
         p++;
 }
 
-void OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
+std::vector<uint64_t> OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
 {
     uint64_t n = (int)ceil(alpha * N);
     SmallSample(m_iom, extint, B, n, sorttype == TIGHT);
     VectorSlice sample(m_intmem, 0, n);
     boost::sort::block_indirect_sort(sample.begin(), sample.end(), NUM_THREADS);
     // move pivots to the end of the memory
-    return GetQuantile(m_intmem, n, p);
+    return GetQuantile(sample, p);
 }
 
-std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<uint64_t> &extint)
+std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<uint64_t> &extint, std::vector<uint64_t> &pivots)
 {
     uint64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
     uint64_t num_memloads = ceil((float)N / memload);
@@ -116,8 +117,8 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
     std::vector<std::vector<uint64_t> *> buckets(p);
     for (int i = 0; i < p; i++)
         buckets[i] = new std::vector<uint64_t>(unit * num_memloads);
-    VectorSlice pivots(m_intmem, M - p + 1, p - 1);
     Feistel fs(N / B);
+    std::vector<uint64_t> posList(p - 1);
     for (uint64_t i = 0; i < num_memloads; i++)
     {
         uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
@@ -131,15 +132,19 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
         m_iom.m_numIOs += blocks_thisload;
         VectorSlice intdata(m_intmem, 0, actual_load);
         boost::sort::block_indirect_sort(intdata.begin(), intdata.end(), NUM_THREADS);
-        InternalPartition(intdata, pivots, posList);
+#pragma omp parallel for num_threads(NUM_THREADS)
+        for (int j = 0; j < p - 1; j++)
+            posList[j] = std::distance(intdata.begin(), std::lower_bound(intdata.begin(), intdata.end(), pivots[j]));
+#pragma omp parallel for num_threads(NUM_THREADS)
         for (int j = 0; j < p; j++)
         {
             uint64_t prevPos = (j == 0) ? 0 : posList[j - 1];
-            uint64_t endPos = (j == p - 1) ? actual_load : posList[j];
-            VectorSlice intBucket(m_intmem, prevPos, endPos - prevPos);
+            uint64_t endPos = (j == p - 1) ? intdata.size() : posList[j];
+            VectorSlice intBucket(intdata, prevPos, endPos - prevPos);
             VectorSlice extBucket(*buckets[j], unit * i, unit);
-            m_iom.DataTransfer(intBucket, extBucket);
+            extBucket.CopyDataFrom(intBucket, true);
         }
+        m_iom.m_numIOs += ceil((float)p * unit / B);
     }
     return buckets;
 }
@@ -171,12 +176,12 @@ void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::
 
 void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout, SortType sorttype)
 {
-    Tick("Decide pivot");
-    GetPivots(extint, sorttype);
-    Tick("Decide pivot");
+    Tick("Decide pivots");
+    auto pivots = GetPivots(extint, sorttype);
+    Tick("Decide pivots");
 
     Tick("Partition");
-    auto buckets = FirstLevelPartition(extint);
+    auto buckets = FirstLevelPartition(extint, pivots);
     Tick("Partition");
 
     Tick("Final sorting");

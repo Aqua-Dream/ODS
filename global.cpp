@@ -6,6 +6,7 @@
 #include <iostream>
 #include <unordered_map>
 
+int NUM_THREADS;
 std::random_device dev;
 std::mt19937 rng(0); 
 std::unordered_map<std::string, std::chrono::system_clock::time_point> tick_table;
