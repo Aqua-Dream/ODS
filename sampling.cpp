@@ -23,37 +23,28 @@ uint64_t InMemoryBernoulliSample(IOManager &iom, std::vector<uint64_t> &extmem, 
     for (int i = 0; i < NUM_THREADS; i++)
         rngs[i] = boost::random::mt19937(dev());
 
-    for (uint64_t extPos = 0; extPos < N; extPos += B * NUM_THREADS)
+    for (uint64_t extPos = 0; extPos < N; extPos += M)
     {
-        uint64_t num_block_remained = (N - extPos) / B;
-        int num_threads = num_block_remained < NUM_THREADS ? num_block_remained : NUM_THREADS;
-        if (intPos + num_threads * B > M)
-        {
-            std::cerr << "In memory sample overflow!" << std::endl;
-            exit(-1);
-        }
+        uint64_t memload = (N - extPos) / M;
+        if(memload > M) memload = M;
         uint64_t num_IOs = 0;
-
-        #pragma omp parallel for reduction(+ : num_IOs) num_threads(num_threads)
-        for (uint64_t j = 0; j < num_threads; j++)
+        std::fill(intmem.begin(), intmem.end(), DUMMY);
+        #pragma omp parallel for reduction(+:num_IOs) num_threads(NUM_THREADS)
+        for (uint64_t j = 0; j < memload/B; j++)
         {
-            int num_to_sample = binom(rngs[j]);
-            VectorSlice intslice(intmem, M - (j + 1) * B, B);
+            uint64_t num_to_sample = binom(rngs[omp_get_thread_num()]);
+            VectorSlice intslice(intmem, j*B, B);
             if (oblivious || num_to_sample > 0)
             {
+                num_IOs ++;
                 VectorSlice extslice(extmem, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
                 std::random_shuffle(intslice.begin(), intslice.end());
+                std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
             }
-            std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
-            num_IOs += num_to_sample;
         }
         iom.m_numIOs += num_IOs;
-        for (uint64_t j = M - 1; j >= M - num_threads * B; j--)
-        {
-            if (intmem[j] != DUMMY)
-                intmem[intPos++] = intmem[j];
-        }
+        
     }
     return intPos;
 }

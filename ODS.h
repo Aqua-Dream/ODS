@@ -26,6 +26,7 @@ private:
     int p;
     IOManager &m_iom;
     std::vector<uint64_t> &m_intmem;
+    void Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extout, SortType sorttype);
     std::vector<uint64_t> GetPivots(std::vector<uint64_t> &extint, SortType sorttype);
     // extout should not be the same with extin
     std::vector<std::vector<uint64_t> *> FirstLevelPartition(std::vector<uint64_t> &extint, std::vector<uint64_t> &pivots);

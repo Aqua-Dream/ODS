@@ -80,15 +80,73 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
         p++;
 }
 
+void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extout, SortType sorttype)
+{
+    uint64_t outPos = 0;
+    extout.resize((uint64_t)(1.5 * alpha * N));
+    std::random_device dev;
+    std::binomial_distribution<int> binom(B, alpha);
+    std::vector<std::mt19937> rngs(NUM_THREADS);
+    for (int i = 0; i < NUM_THREADS; i++)
+        rngs[i] = std::mt19937(dev());
+    for (uint64_t extPos = 0; extPos < N; extPos += M)
+    {
+        uint64_t memload = N - extPos;
+        if (memload > M)
+            memload = M;
+        uint64_t num_IOs = 0;
+        std::fill(m_intmem.begin(), m_intmem.end(), DUMMY);
+#pragma omp parallel for reduction(+ \
+                                   : num_IOs) num_threads(NUM_THREADS)
+        for (uint64_t j = 0; j < memload / B; j++)
+        {
+            uint64_t num_to_sample = binom(rngs[omp_get_thread_num()]);
+            VectorSlice intslice(m_intmem, j * B, B);
+            if (sorttype == SortType::TIGHT || num_to_sample > 0)
+            {
+                num_IOs++;
+                VectorSlice extslice(extin, extPos + j * B, B);
+                intslice.CopyDataFrom(extslice);
+                std::random_shuffle(intslice.begin(), intslice.end());
+                std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
+            }
+        }
+        m_iom.m_numIOs += num_IOs;
+        VectorSlice intslice(m_intmem, 0, memload);
+        auto realslice = Compact(intslice);
+        uint64_t outsize =  realslice.size();
+        if (sorttype == SortType::TIGHT)
+        {
+            outsize = 1.5 * alpha * M;
+            if (realslice.size() > outsize)
+            {
+                std::cerr << "Data overflow when sampling!" << std::endl;
+                exit(-1);
+            }
+
+        }
+        VectorSlice outslice (extout, outPos, outsize);
+        m_iom.DataTransfer(realslice, outslice);
+        outPos += outsize;
+    }
+
+    extout.resize(outPos);
+}
+
 std::vector<uint64_t> OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
 {
-    uint64_t n = (int)ceil(alpha * N);
-    //SmallSample(m_iom, extint, B, n, sorttype == TIGHT);
-    n = InMemoryBernoulliSample(m_iom, extint, B, alpha, sorttype == TIGHT);
-    VectorSlice sample(m_intmem, 0, n);
-    boost::sort::block_indirect_sort(sample.begin(), sample.end(), NUM_THREADS);
+    std::vector<uint64_t> sample;
+    Sample(extint, sample, sorttype);
+    if(sample.size()>M)
+        throw std::invalid_argument("Sample does not fit into memory!");
+    VectorSlice sampleslice (sample, 0, sample.size());
+    VectorSlice intslice(m_intmem, 0, sample.size());
+    m_iom.DataTransfer(sampleslice, intslice);
+    boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
+    auto realnum = std::distance(intslice.begin(), std::lower_bound(intslice.begin(),intslice.end(), DUMMY-1));
     // move pivots to the end of the memory
-    return GetQuantile(sample, p);
+    VectorSlice sampleforquantile(intslice, 0, realnum);
+    return GetQuantile(sampleforquantile, p);
 }
 
 std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<uint64_t> &extint, std::vector<uint64_t> &pivots)
@@ -126,9 +184,9 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
             uint64_t endPos = (j == p - 1) ? intdata.size() : posList[j];
             VectorSlice intBucket(intdata, prevPos, endPos - prevPos);
             VectorSlice extBucket(*buckets[j], unit * i, unit);
-            if(intBucket.size() > unit)
+            if (intBucket.size() > unit)
             {
-                std::cerr << "Bucket overflow!" << std:: endl;
+                std::cerr << "Bucket overflow!" << std::endl;
                 exit(-1);
             }
             extBucket.CopyDataFrom(intBucket, true);
