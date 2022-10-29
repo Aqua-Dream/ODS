@@ -53,28 +53,11 @@ VectorSlice Compact(VectorSlice data)
     return VectorSlice(data, 0, i);
 }
 
-// return: the number of elements smaller than pivot
-uint64_t InternalPartitionLevel(VectorSlice &data, uint64_t pivot)
-{
-    uint64_t i = 0;
-    for (uint64_t j = 0; j < data.size(); ++j)
-    {
-        if (pivot > data[j])
-        {
-            uint64_t tmp = data[i];
-            data[i] = data[j];
-            data[j] = tmp;
-            i++;
-        }
-    }
-    return i;
-}
-
 OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma)
     : N{dataSize}, M{iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}
 {
     if (M % B != 0 || N % B != 0)
-        throw std::invalid_argument("N and M must be multiple of B!");
+        throw std::invalid_argument("N and M must be multiples of B!");
     double kappa = sigma * 0.693147;
     // has a solution iff a<0.012858
     double a = 2.0 * N * B / M * (kappa + 1 + 2 * log(N / M)) / M;
@@ -82,7 +65,7 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
     if (beta == -1)
         throw std::invalid_argument("Invalid parameters for one-level sorting!");
     alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    while (alpha * N >= M - B)
+    while (alpha >= 1)
     {
         beta *= 2;
         alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
@@ -100,7 +83,8 @@ OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int si
 std::vector<uint64_t> OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
 {
     uint64_t n = (int)ceil(alpha * N);
-    SmallSample(m_iom, extint, B, n, sorttype == TIGHT);
+    //SmallSample(m_iom, extint, B, n, sorttype == TIGHT);
+    n = InMemoryBernoulliSample(m_iom, extint, B, alpha, sorttype == TIGHT);
     VectorSlice sample(m_intmem, 0, n);
     boost::sort::block_indirect_sort(sample.begin(), sample.end(), NUM_THREADS);
     // move pivots to the end of the memory
@@ -142,6 +126,11 @@ std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<u
             uint64_t endPos = (j == p - 1) ? intdata.size() : posList[j];
             VectorSlice intBucket(intdata, prevPos, endPos - prevPos);
             VectorSlice extBucket(*buckets[j], unit * i, unit);
+            if(intBucket.size() > unit)
+            {
+                std::cerr << "Bucket overflow!" << std:: endl;
+                exit(-1);
+            }
             extBucket.CopyDataFrom(intBucket, true);
         }
         m_iom.m_numIOs += ceil((float)p * unit / B);

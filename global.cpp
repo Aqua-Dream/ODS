@@ -8,13 +8,13 @@
 
 int NUM_THREADS;
 std::random_device dev;
-std::mt19937 rng(0); 
+std::mt19937 rng(dev());
 std::unordered_map<std::string, std::chrono::system_clock::time_point> tick_table;
 
 // "end" not included
 uint64_t RandRange(uint64_t start, uint64_t end)
 {
-    std::uniform_int_distribution<uint64_t>  distr(start, end-1);
+    std::uniform_int_distribution<uint64_t> distr(start, end - 1);
     return distr(rng);
 }
 
