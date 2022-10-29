@@ -10,6 +10,22 @@
 #include <iostream>
 #include <boost/sort/sort.hpp>
 
+class ThreadSafeRNG
+{
+public:
+    typedef size_t result_type;
+    ThreadSafeRNG(unsigned int seed=0) : seed{seed} {};
+    static size_t min() { return 0; }
+    static size_t max() { return RAND_MAX; }
+    size_t operator()()
+    {
+        return rand_r(&seed);
+    }
+
+private:
+    unsigned int seed;
+};
+
 // return the q-quantile of the first n elements in data
 // length of quantile: q-1
 std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
@@ -86,9 +102,9 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
     extout.resize((uint64_t)(1.5 * alpha * N));
     std::random_device dev;
     std::binomial_distribution<int> binom(B, alpha);
-    std::vector<std::mt19937> rngs(NUM_THREADS);
+    std::vector<ThreadSafeRNG> rngs(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; i++)
-        rngs[i] = std::mt19937(dev());
+        rngs[i] = ThreadSafeRNG(dev());
     for (uint64_t extPos = 0; extPos < N; extPos += M)
     {
         uint64_t memload = N - extPos;
@@ -114,7 +130,7 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
         m_iom.m_numIOs += num_IOs;
         VectorSlice intslice(m_intmem, 0, memload);
         auto realslice = Compact(intslice);
-        uint64_t outsize =  realslice.size();
+        uint64_t outsize = realslice.size();
         if (sorttype == SortType::TIGHT)
         {
             outsize = 1.5 * alpha * M;
@@ -123,9 +139,8 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
                 std::cerr << "Data overflow when sampling!" << std::endl;
                 exit(-1);
             }
-
         }
-        VectorSlice outslice (extout, outPos, outsize);
+        VectorSlice outslice(extout, outPos, outsize);
         m_iom.DataTransfer(realslice, outslice);
         outPos += outsize;
     }
@@ -137,13 +152,13 @@ std::vector<uint64_t> OneLevel::GetPivots(std::vector<uint64_t> &extint, SortTyp
 {
     std::vector<uint64_t> sample;
     Sample(extint, sample, sorttype);
-    if(sample.size()>M)
+    if (sample.size() > M)
         throw std::invalid_argument("Sample does not fit into memory!");
-    VectorSlice sampleslice (sample, 0, sample.size());
+    VectorSlice sampleslice(sample, 0, sample.size());
     VectorSlice intslice(m_intmem, 0, sample.size());
     m_iom.DataTransfer(sampleslice, intslice);
     boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
-    auto realnum = std::distance(intslice.begin(), std::lower_bound(intslice.begin(),intslice.end(), DUMMY-1));
+    auto realnum = std::distance(intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY - 1));
     // move pivots to the end of the memory
     VectorSlice sampleforquantile(intslice, 0, realnum);
     return GetQuantile(sampleforquantile, p);
