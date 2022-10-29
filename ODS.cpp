@@ -100,15 +100,14 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
                                    : num_IOs) num_threads(NUM_THREADS)
         for (uint64_t j = 0; j < memload / B; j++)
         {
-            auto rng = rngs[omp_get_thread_num()];
-            uint64_t num_to_sample = binom(rng);
+            uint64_t num_to_sample = binom(rngs[omp_get_thread_num()]);
             VectorSlice intslice(m_intmem, j * B, B);
             if (sorttype == SortType::TIGHT || num_to_sample > 0)
             {
                 num_IOs++;
                 VectorSlice extslice(extin, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
-                std::shuffle(intslice.begin(), intslice.end(), rng);
+                std::shuffle(intslice.begin(), intslice.end(), rngs[omp_get_thread_num()]);
                 std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
             }
         }
