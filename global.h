@@ -3,8 +3,8 @@
 #include <string>
 
 // "end" not included
-uint64_t RandRange(uint64_t start, uint64_t end);
+int64_t RandRange(int64_t start, int64_t end);
 void Tick(std::string name);
 
-const uint64_t DUMMY = 0xCCCCCCCCCCCCCCCC; 
+const int64_t DUMMY = INT64_MAX; 
 extern int NUM_THREADS;

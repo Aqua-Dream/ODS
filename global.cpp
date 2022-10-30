@@ -12,9 +12,9 @@ std::mt19937 rng(dev());
 std::unordered_map<std::string, std::chrono::system_clock::time_point> tick_table;
 
 // "end" not included
-uint64_t RandRange(uint64_t start, uint64_t end)
+int64_t RandRange(int64_t start, int64_t end)
 {
-    std::uniform_int_distribution<uint64_t> distr(start, end - 1);
+    std::uniform_int_distribution<int64_t> distr(start, end - 1);
     return distr(rng);
 }
 
@@ -29,5 +29,6 @@ void Tick(std::string name)
         int64_t elaspe = duration_cast<milliseconds>(duration).count();
         std::cout << name << ": " << elaspe << " ms" << std::endl;
     }
-    tick_table[name] = std::chrono::system_clock::now();
+    else
+        tick_table[name] = std::chrono::system_clock::now();
 }

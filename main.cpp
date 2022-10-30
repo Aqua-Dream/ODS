@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <boost/program_options.hpp>
+#include <omp.h>
 
 using namespace std::chrono;
 
@@ -21,7 +22,7 @@ po::variables_map read_options(int argc, char *argv[])
     try
     {
         po::options_description desc("Allowed options");
-        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(16), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(8), "The value N/M")("block_size,B", po::value<uint64_t>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>(&NUM_THREADS)->default_value(4), "Number of threads")("sigma,s", po::value<int>()->default_value(40), "Failure probability upper bound: 2^(-sigma)");
+        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(8), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(16), "The value N/M")("block_size,B", po::value<int>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>(&NUM_THREADS)->default_value(4), "Number of threads")("sigma,s", po::value<int>()->default_value(40), "Failure probability upper bound: 2^(-sigma)");
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
         if (vm.count("help"))
@@ -29,11 +30,12 @@ po::variables_map read_options(int argc, char *argv[])
             cout << desc << endl;
             exit(0);
         }
+        omp_set_num_threads(NUM_THREADS);
     }
     catch (exception &e)
     {
         cerr << "error: " << e.what() << endl;
-        exit (1);
+        exit(1);
     }
     catch (...)
     {
@@ -43,15 +45,51 @@ po::variables_map read_options(int argc, char *argv[])
     return vm;
 }
 
-void CheckOutput(vector<uint64_t> &output, OneLevel::SortType sorttype)
+void CheckOutput(vector<int64_t> &output, OneLevel::SortType sorttype)
 {
-    uint64_t v = 1;
+    int64_t v = 1;
     for (auto t : output)
     {
-        if (t == DUMMY)
-            assert(sorttype == OneLevel::LOOSE);
-        else
-            assert(t == v++);
+        if (t == DUMMY && sorttype != OneLevel::LOOSE)
+            throw "Dummy found in tight sort!";
+        else if (t!= DUMMY && t != v++)
+            throw "Value error!";
+    }
+}
+
+void CheckOutput2(vector<int64_t> &output, OneLevel::SortType sorttype, int64_t X)
+{
+    int64_t num_X = X, num_2X = X;
+    if (sorttype == OneLevel::TIGHT)
+    {
+        for (int64_t i = 0; i < X; i++)
+        {
+            if (output[i] != X)
+                throw "Value error!";
+        }
+        for (int64_t i = X + 1; i < 2 * X; i++)
+        {
+            if (output[i] != 2 * X)
+                throw "Value error!";
+        }
+    }
+    else
+    {
+        for (auto t : output)
+        {
+            if (t == X)
+            {
+                num_X--;
+                if (num_X < 0)
+                    throw "Value error!";
+            }
+            else if (t == 2 * X)
+            {
+                num_2X--;
+                if (num_2X < 0 || num_X > 0)
+                    throw "Value error!";
+            }
+        }
     }
 }
 
@@ -61,23 +99,88 @@ void CheckOutput(vector<uint64_t> &output, OneLevel::SortType sorttype)
 
 void OneLevelExp(po::variables_map vm)
 {
-    uint64_t M = (vm["m"].as<int>()<<20)/sizeof(uint64_t);
-    uint64_t N = vm["c"].as<int>() * M;
-    uint64_t B = vm["block_size"].as<uint64_t> ();
+    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
+    int64_t N = vm["c"].as<int>() * M;
+    int B = vm["block_size"].as<int>();
     int sigma = vm["sigma"].as<int>();
-    Tick("Total");
+
     IOManager iom(M, B);
     OneLevel ods(iom, N, B, sigma);
-    vector<uint64_t> input(N);
-    vector<uint64_t> output;
-    for (uint64_t i = 0; i < N; i++)
+    vector<int64_t> input(N);
+    vector<int64_t> output;
+    for (int64_t i = 0; i < N; i++)
         input[i] = N - i;
-    // random_shuffle(input.begin(), input.end());
+
+    cout << "---------------- Tight Sort ----------------" << endl;
+    Tick("Total");
+    ods.Sort(input, output, OneLevel::TIGHT);
+    CheckOutput(output, OneLevel::TIGHT);
+    Tick("Total");
+    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
+    iom.ClearIO();
+
+    cout << "---------------- Loose Sort ----------------" << endl;
+    Tick("Total");
     ods.Sort(input, output, OneLevel::LOOSE);
     CheckOutput(output, OneLevel::LOOSE);
     Tick("Total");
     cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
     iom.ClearIO();
+
+    cout << "---------------- Including Duplicates ----------------" << endl;
+    const int X = 12345;
+    fill_n(input.begin(), X, 2 * X);
+    fill_n(input.begin() + X, X, X);
+    fill(input.begin() + 2 * X, input.end(), DUMMY);
+    Tick("Total");
+    ods.Sort(input, output, OneLevel::LOOSE);
+    CheckOutput2(output, OneLevel::LOOSE, X);
+    Tick("Total");
+    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
+    iom.ClearIO();
+}
+
+void TwoLevelExp(po::variables_map vm)
+{
+    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
+    int64_t N = vm["c"].as<int>() * M;
+    int B = vm["block_size"].as<int>();
+    int sigma = vm["sigma"].as<int>();
+
+    IOManager iom(M, B);
+    TwoLevel ods(iom, N, B, sigma);
+    vector<int64_t> input(N);
+    vector<int64_t> output;
+    for (int64_t i = 0; i < N; i++)
+        input[i] = N - i;
+
+    cout << "---------------- Tight Sort ----------------" << endl;
+    Tick("Total");
+    ods.Sort(input, output, TwoLevel::TIGHT);
+    CheckOutput(output, TwoLevel::TIGHT);
+    Tick("Total");
+    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
+    iom.ClearIO();
+
+    // cout << "---------------- Loose Sort ----------------" << endl;
+    // Tick("Total");
+    // ods.Sort(input, output, TwoLevel::LOOSE);
+    // CheckOutput(output, TwoLevel::LOOSE);
+    // Tick("Total");
+    // cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
+    // iom.ClearIO();
+
+    // cout << "---------------- Including Duplicates ----------------" << endl;
+    // const int X = 12345;
+    // fill_n(input.begin(), X, 2 * X);
+    // fill_n(input.begin() + X, X, X);
+    // fill(input.begin() + 2 * X, input.end(), DUMMY);
+    // Tick("Total");
+    // ods.Sort(input, output, TwoLevel::LOOSE);
+    // CheckOutput2(output, TwoLevel::LOOSE, X);
+    // Tick("Total");
+    // cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
+    // iom.ClearIO();
 }
 
 int main(int argc, char *argv[])

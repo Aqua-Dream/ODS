@@ -4,11 +4,10 @@
 #include "memory.h"
 #include "global.h"
 
-// void Quantile(std::vector<uint64_t>& data, uint64_t n, int q); // for test only
+double argsolver(double a);
+std::vector<int64_t> GetQuantile(VectorSlice vs, int q);
 
-// void InternalPartition(VectorSlice &data, VectorSlice &pivots, VectorSlice &posList);
-
-class OneLevel
+class ObliDistSort
 {
 public:
     enum SortType
@@ -17,18 +16,36 @@ public:
         LOOSE
     };
     // failure probability bounded by 2^(-sigma)
-    OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma);
-    void Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout, SortType sorttype);
+    ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
 
-private:
-    uint64_t N, M, B;
+protected:
+    int64_t N, M;
+    int B;
     double alpha, beta;
-    int p;
+    int p0, p, sigma, num_levels;
     IOManager &m_iom;
-    std::vector<uint64_t> &m_intmem;
-    void Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extout, SortType sorttype);
-    std::vector<uint64_t> GetPivots(std::vector<uint64_t> &extint, SortType sorttype);
-    // extout should not be the same with extin
-    std::vector<std::vector<uint64_t> *> FirstLevelPartition(std::vector<uint64_t> &extint, std::vector<uint64_t> &pivots);
-    void FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::vector<uint64_t> &out, SortType sorttype);
+    std::vector<int64_t> &m_intmem;
+    void Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
+    std::vector<std::vector<int64_t> *> Partition(std::vector<int64_t> &data, std::vector<int64_t> &pivots, bool isFirstLevel);
+    void FinalSorting(std::vector<std::vector<int64_t> *> &buckets, std::vector<int64_t> &out, SortType sorttype);
+};
+
+class OneLevel : public ObliDistSort
+{
+public:
+    OneLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+private:
+    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
+};
+
+class TwoLevel : public ObliDistSort
+{
+public:
+    TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+private:
+    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
 };

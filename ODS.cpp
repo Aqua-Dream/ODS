@@ -1,23 +1,62 @@
 #include "ODS.h"
 #include <cmath>
 #include <stdexcept>
-#include "sampling.h"
-#include "argsolver.h"
 #include <algorithm>
 #include <cassert>
 #include "Feistel.h"
 #include <omp.h>
 #include <iostream>
 #include <boost/sort/sort.hpp>
+#include <boost/math/tools/roots.hpp>
+#include <boost/math/special_functions/pow.hpp>
+
+struct equation_to_solve
+{
+    // Functor returning both 1st and 2nd derivatives.
+    equation_to_solve(double a) : m_arg(a) {}
+
+    std::tuple<double, double, double> operator()(double x)
+    {
+        using boost::math::pow;
+        // Return both f(x) and f'(x) and f''(x).
+        double fx = pow<2>(x) * (1 - x) - pow<2>(1 + 2 * x) * (1 + x / 2) * pow<2>(1 + x) * m_arg;
+        double dx = (2 - 3 * x) * x - m_arg * (6.5 + x * (34 + x * (55.5 + x * (40 + x * 10))));
+        double d2x = 2 - 6 * x - m_arg * (34 + x * (111 + x * 120 + x * 40));
+        return std::make_tuple(fx, dx, d2x); // 'return' fx, dx and d2x.
+    }
+
+private:
+    double m_arg; // to be 'fifth_rooted'.
+};
+
+// return -1 if no solution exists
+// For one-level, a=2NB/M^2 *(kappa+1+2*log(N/M))
+// For two-level, a=2B*sqrt(N/M)/M *(kappa+2+1.5*log(N/M))
+double argsolver(double a)
+{
+    // find beta
+    using namespace std;                // Help ADL of std functions.
+    using namespace boost::math::tools; // for halley_iterate.
+    double guess = 0.2;                 // Rough guess is to divide the exponent by five.
+    double min = 0.0;                   // Minimum possible value is half our guess.
+    double max = 1.0;                   // Maximum possible value is twice our guess.
+    const int digits = 5;
+    const boost::uintmax_t maxit = 10;
+    boost::uintmax_t it = maxit;
+    double result = halley_iterate(equation_to_solve(a), guess, min, max, digits, it);
+    if (result < 1e-5 || result > 1 - 1e-5) // fail to solve
+        result = -1;
+    return result;
+}
 
 // return the q-quantile of the first n elements in data
 // length of quantile: q-1
-std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
+std::vector<int64_t> GetQuantile(VectorSlice vs, int q)
 {
-    uint64_t n = vs.size();
-    uint64_t step = n / q;
+    int64_t n = vs.size();
+    int64_t step = n / q;
     int remain = n % q;
-    std::vector<uint64_t> pivots(q - 1);
+    std::vector<int64_t> pivots(q - 1);
     int dataIdx = -1;
     int i = 0;
     for (; i < remain; i++)
@@ -36,8 +75,8 @@ std::vector<uint64_t> GetQuantile(VectorSlice vs, int q)
 // move dummy elements to the end; return the slice of real elements
 VectorSlice Compact(VectorSlice data)
 {
-    uint64_t i = 0;
-    uint64_t j = data.size() - 1;
+    int64_t i = 0;
+    int64_t j = data.size() - 1;
     while (1)
     {
         while (i < j && data[i] != DUMMY)
@@ -46,66 +85,47 @@ VectorSlice Compact(VectorSlice data)
             j--; // find the first non-dummy from right
         if (i >= j)
             break;
-        uint64_t tmp = data[i];
+        int64_t tmp = data[i];
         data[i] = data[j];
         data[j] = tmp;
     }
     return VectorSlice(data, 0, i);
 }
 
-OneLevel::OneLevel(IOManager &iom, uint64_t dataSize, uint64_t blockSize, int sigma)
-    : N{dataSize}, M{iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}
+ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
+    : N{dataSize}, M{(int64_t)iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}, sigma{sigma}
 {
     if (M % B != 0 || N % B != 0)
         throw std::invalid_argument("N and M must be multiples of B!");
-    double kappa = sigma * 0.693147;
-    // has a solution iff a<0.012858
-    double a = 2.0 * N * B / M * (kappa + 1 + 2 * log(N / M)) / M;
-    beta = argsolver(a);
-    if (beta == -1)
-        throw std::invalid_argument("Invalid parameters for one-level sorting!");
-    alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    while (alpha >= 1)
-    {
-        beta *= 2;
-        alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    }
-    if (beta >= 1)
-        throw std::invalid_argument("Invalid parameters for one-level sorting!");
-    p = (int)ceil((1 + 2 * beta) * N / M);
-    uint64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
-    uint64_t num_memloads = ceil((float)N / memload);
-    uint64_t unit = ceil(float(M) / p);
-    if (unit * num_memloads > M)
-        p++;
+    alpha = beta = p0 = p = -1; // not implemented
 }
 
-void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extout, SortType sorttype)
+void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
 {
-    uint64_t outPos = 0;
-    extout.resize((uint64_t)(1.5 * alpha * N));
+    int64_t outPos = 0;
+    output.resize((int64_t)(1.5 * alpha * ceil((float)N / M) * M));
     std::random_device dev;
     std::binomial_distribution<int> binom(B, alpha);
     std::vector<std::mt19937> rngs(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; i++)
         rngs[i] = std::mt19937(dev());
-    for (uint64_t extPos = 0; extPos < N; extPos += M)
+    for (int64_t extPos = 0; extPos < N; extPos += M)
     {
-        uint64_t memload = N - extPos;
+        int64_t memload = N - extPos;
         if (memload > M)
             memload = M;
-        uint64_t num_IOs = 0;
+        int64_t num_IOs = 0;
         std::fill(m_intmem.begin(), m_intmem.end(), DUMMY);
 #pragma omp parallel for reduction(+ \
-                                   : num_IOs) num_threads(NUM_THREADS)
-        for (uint64_t j = 0; j < memload / B; j++)
+                                   : num_IOs)
+        for (int64_t j = 0; j < memload / B; j++)
         {
-            uint64_t num_to_sample = binom(rngs[omp_get_thread_num()]);
+            int num_to_sample = binom(rngs[omp_get_thread_num()]);
             VectorSlice intslice(m_intmem, j * B, B);
             if (sorttype == SortType::TIGHT || num_to_sample > 0)
             {
                 num_IOs++;
-                VectorSlice extslice(extin, extPos + j * B, B);
+                VectorSlice extslice(input, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
                 std::shuffle(intslice.begin(), intslice.end(), rngs[omp_get_thread_num()]);
                 std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
@@ -114,7 +134,7 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
         m_iom.m_numIOs += num_IOs;
         VectorSlice intslice(m_intmem, 0, memload);
         auto realslice = Compact(intslice);
-        uint64_t outsize = realslice.size();
+        int64_t outsize = realslice.size();
         if (sorttype == SortType::TIGHT)
         {
             outsize = 1.5 * alpha * M;
@@ -124,115 +144,105 @@ void OneLevel::Sample(std::vector<uint64_t> &extin, std::vector<uint64_t> &extou
                 exit(-1);
             }
         }
-        VectorSlice outslice(extout, outPos, outsize);
+        VectorSlice outslice(output, outPos, outsize);
         m_iom.DataTransfer(realslice, outslice);
         outPos += outsize;
     }
-
-    extout.resize(outPos);
+    int64_t dummyToPad = outPos % B > 0 ? B - outPos % B : 0;
+    output.resize(outPos + dummyToPad);
+    std::fill_n(output.begin() + outPos, dummyToPad, DUMMY);
 }
 
-std::vector<uint64_t> OneLevel::GetPivots(std::vector<uint64_t> &extint, SortType sorttype)
+std::vector<int64_t> ObliDistSort::GetPivots(std::vector<int64_t> &data, SortType sorttype)
 {
-    std::vector<uint64_t> sample;
-    Sample(extint, sample, sorttype);
-    if (sample.size() > M)
-        throw std::invalid_argument("Sample does not fit into memory!");
-    VectorSlice sampleslice(sample, 0, sample.size());
-    VectorSlice intslice(m_intmem, 0, sample.size());
-    m_iom.DataTransfer(sampleslice, intslice);
-    boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
-    auto realnum = std::distance(intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY - 1));
-    // move pivots to the end of the memory
-    VectorSlice sampleforquantile(intslice, 0, realnum);
-    return GetQuantile(sampleforquantile, p);
+    throw std::logic_error("Sorting for general ODS has not been implemented yet!");
 }
 
-std::vector<std::vector<uint64_t> *> OneLevel::FirstLevelPartition(std::vector<uint64_t> &extint, std::vector<uint64_t> &pivots)
+std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t> &data, std::vector<int64_t> &pivots, bool isFirstLevel)
 {
-    uint64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
-    uint64_t num_memloads = ceil((float)N / memload);
-    uint64_t unit = ceil(float(M) / p);
-    if (memload + 2 * (p - 1) > M)
-        throw std::invalid_argument("Memory not enough!");
-    std::vector<std::vector<uint64_t> *> buckets(p);
-    for (int i = 0; i < p; i++)
-        buckets[i] = new std::vector<uint64_t>(unit * num_memloads);
-    Feistel fs(N / B);
-    std::vector<uint64_t> posList(p - 1);
-    for (uint64_t i = 0; i < num_memloads; i++)
+    int64_t memload = isFirstLevel ? (ceil(M / (1 + 2 * beta) / B) * B) : M; // be the multiple of B
+    int64_t data_size = data.size();
+    int64_t num_memloads = ceil((float)data_size / memload);
+    int num_buckets = pivots.size() + 1;
+    int64_t unit = ceil(float(M) / num_buckets);
+    std::vector<uint64_t> posList(num_buckets - 1);
+    std::vector<std::vector<int64_t> *> buckets(num_buckets);
+    for (int i = 0; i < num_buckets; i++)
+        buckets[i] = new std::vector<int64_t>(unit * num_memloads);
+    Feistel fs(data_size / B);
+    for (int64_t i = 0; i < num_memloads; i++)
     {
-        uint64_t actual_load = (N < (i + 1) * memload) ? (N - i * memload) : memload;
-        uint64_t blocks_thisload = actual_load / B;
-#pragma omp parallel for num_threads(NUM_THREADS)
-        for (uint64_t j = 0; j < blocks_thisload; j++)
+        int64_t actual_load = (data_size < (i + 1) * memload) ? (data_size - i * memload) : memload;
+        int64_t blocks_thisload = actual_load / B;
+        VectorSlice intslice(m_intmem, 0, actual_load);
+#pragma omp parallel for
+        for (int64_t j = 0; j < blocks_thisload; j++)
         {
-            uint64_t blockId = fs.permute(j + i * memload / B);
-            std::copy_n(extint.begin() + blockId * B, B, m_intmem.begin() + j * B);
+            int64_t blockId = j + i * memload / B;
+            if (isFirstLevel)
+                blockId = fs.permute(blockId);
+            std::copy_n(data.begin() + blockId * B, B, m_intmem.begin() + j * B);
         }
         m_iom.m_numIOs += blocks_thisload;
-        VectorSlice intdata(m_intmem, 0, actual_load);
-        boost::sort::block_indirect_sort(intdata.begin(), intdata.end(), NUM_THREADS);
-#pragma omp parallel for num_threads(NUM_THREADS)
-        for (int j = 0; j < p - 1; j++)
-            posList[j] = std::distance(intdata.begin(), std::lower_bound(intdata.begin(), intdata.end(), pivots[j]));
-#pragma omp parallel for num_threads(NUM_THREADS)
-        for (int j = 0; j < p; j++)
+        boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
+        // remove dummy
+        VectorSlice _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY));
+        std::vector<int64_t>::iterator iprevPos = _intslice.begin();
+#pragma omp parallel
         {
-            uint64_t prevPos = (j == 0) ? 0 : posList[j - 1];
-            uint64_t endPos = (j == p - 1) ? intdata.size() : posList[j];
-            VectorSlice intBucket(intdata, prevPos, endPos - prevPos);
-            VectorSlice extBucket(*buckets[j], unit * i, unit);
-            if (intBucket.size() > unit)
+#pragma omp for
+            for (int j = 0; j < num_buckets - 1; j++)
             {
-                std::cerr << "Bucket overflow!" << std::endl;
-                exit(-1);
+                auto pivot = pivots[j];
+                posList[j] = std::distance(_intslice.begin(), std::lower_bound(_intslice.begin(), _intslice.end(), pivot));
             }
-            extBucket.CopyDataFrom(intBucket, true);
+#pragma omp for
+            for (int j = 0; j < num_buckets; j++)
+            {
+                int64_t prevPos = (j == 0) ? 0 : posList[j - 1];
+                int64_t endPos = (j == num_buckets - 1) ? _intslice.size() : posList[j];
+                VectorSlice intBucket(_intslice, prevPos, endPos - prevPos);
+                VectorSlice extBucket(*buckets[j], unit * i, unit);
+                if (intBucket.size() > unit)
+                {
+                    std::cerr << "Bucket overflow!" << std::endl;
+                    exit(-1);
+                }
+                extBucket.CopyDataFrom(intBucket, true);
+            }
         }
-        m_iom.m_numIOs += ceil((float)p * unit / B);
+        m_iom.m_numIOs += num_buckets * ceil((float)unit / B);
     }
     return buckets;
 }
 
-void OneLevel::FinalSorting(std::vector<std::vector<uint64_t> *> &buckets, std::vector<uint64_t> &out, SortType sorttype)
+void ObliDistSort::FinalSorting(std::vector<std::vector<int64_t> *> &buckets, std::vector<int64_t> &out, SortType sorttype)
 {
-    uint64_t bucket_size = buckets[0]->size();
+    int64_t bucket_size = buckets[0]->size();
     if (bucket_size > M)
         throw std::invalid_argument("Memory not enough for final sorting!");
-    uint64_t num_buckets = buckets.size();
+    int64_t num_buckets = buckets.size();
     if (sorttype == TIGHT)
         out.resize(N);
     else
         out.resize(bucket_size * num_buckets);
-    uint64_t pos = 0;
-    for (uint64_t i = 0; i < num_buckets; i++)
+    int64_t pos = 0;
+    for (int64_t i = 0; i < num_buckets; i++)
     {
         VectorSlice extslice(*buckets[i], 0, bucket_size);
         VectorSlice intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
         auto realslice = Compact(intslice);
         boost::sort::block_indirect_sort(realslice.begin(), realslice.end(), NUM_THREADS);
-        uint64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
+        int64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
         m_iom.DataTransfer(realslice, outslice);
         pos += num_to_write;
     }
+    out.resize(pos);
 }
 
-void OneLevel::Sort(std::vector<uint64_t> &extint, std::vector<uint64_t> &extout, SortType sorttype)
+void ObliDistSort::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
 {
-    Tick("Decide pivots");
-    auto pivots = GetPivots(extint, sorttype);
-    Tick("Decide pivots");
-
-    Tick("Partition");
-    auto buckets = FirstLevelPartition(extint, pivots);
-    Tick("Partition");
-
-    Tick("Final sorting");
-    FinalSorting(buckets, extout, sorttype);
-    Tick("Final sorting");
-    for (auto vs : buckets)
-        delete vs;
+    throw std::logic_error("Sorting for general ODS has not been implemented yet!");
 }

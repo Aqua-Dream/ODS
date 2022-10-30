@@ -5,7 +5,7 @@ set(ODS_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-set(SOURCE_FILES main.cpp Feistel.cpp memory.cpp sampling.cpp global.cpp ODS.cpp argsolver.cpp)
+set(SOURCE_FILES main.cpp Feistel.cpp memory.cpp global.cpp ODS.cpp OneLevel.cpp TwoLevel.cpp)
 
 find_package(OpenMP REQUIRED)
 if (OPENMP_FOUND)
