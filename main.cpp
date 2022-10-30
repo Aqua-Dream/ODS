@@ -56,47 +56,6 @@ void CheckOutput(vector<int64_t> &output, OneLevel::SortType sorttype)
             throw "Value error!";
     }
 }
-
-void CheckOutput2(vector<int64_t> &output, OneLevel::SortType sorttype, int64_t X)
-{
-    int64_t num_X = X, num_2X = X;
-    if (sorttype == OneLevel::TIGHT)
-    {
-        for (int64_t i = 0; i < X; i++)
-        {
-            if (output[i] != X)
-                throw "Value error!";
-        }
-        for (int64_t i = X + 1; i < 2 * X; i++)
-        {
-            if (output[i] != 2 * X)
-                throw "Value error!";
-        }
-    }
-    else
-    {
-        for (auto t : output)
-        {
-            if (t == X)
-            {
-                num_X--;
-                if (num_X < 0)
-                    throw "Value error!";
-            }
-            else if (t == 2 * X)
-            {
-                num_2X--;
-                if (num_2X < 0 || num_X > 0)
-                    throw "Value error!";
-            }
-        }
-    }
-}
-
-// arg1: external number of elements (divided by the max number of elements in the internal memory number), deafult: 128
-// arg2: internal memory size (in terms of MB), default: 128
-// arg3: block size (in terms of elemens), default: 128
-
 void OneLevelExp(po::variables_map vm)
 {
     int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
@@ -120,8 +79,8 @@ void OneLevelExp(po::variables_map vm)
 
 void TwoLevelExp(po::variables_map vm)
 {
-    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t) / 2;
-    int64_t N = vm["c"].as<int>() * M * 4;
+    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
+    int64_t N = vm["c"].as<int>();
     int B = vm["block_size"].as<int>();
     int sigma = vm["sigma"].as<int>();
 
@@ -137,7 +96,6 @@ void TwoLevelExp(po::variables_map vm)
 
     ods.Sort(input, output, TwoLevel::LOOSE, true);
     CheckOutput(output, TwoLevel::LOOSE);
-
 }
 
 int main(int argc, char *argv[])
