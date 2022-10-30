@@ -52,7 +52,7 @@ void CheckOutput(vector<int64_t> &output, OneLevel::SortType sorttype)
     {
         if (t == DUMMY && sorttype != OneLevel::LOOSE)
             throw "Dummy found in tight sort!";
-        else if (t!= DUMMY && t != v++)
+        else if (t != DUMMY && t != v++)
             throw "Value error!";
     }
 }
@@ -67,6 +67,7 @@ void OneLevelExp(po::variables_map vm)
     OneLevel ods(iom, N, B, sigma);
     vector<int64_t> input(N);
     vector<int64_t> output;
+#pragma omp parallel for
     for (int64_t i = 0; i < N; i++)
         input[i] = N - i;
 
@@ -80,7 +81,7 @@ void OneLevelExp(po::variables_map vm)
 void TwoLevelExp(po::variables_map vm)
 {
     int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
-    int64_t N = vm["c"].as<int>();
+    int64_t N = vm["c"].as<int>() * M;
     int B = vm["block_size"].as<int>();
     int sigma = vm["sigma"].as<int>();
 
@@ -88,6 +89,7 @@ void TwoLevelExp(po::variables_map vm)
     TwoLevel ods(iom, N, B, sigma);
     vector<int64_t> input(N);
     vector<int64_t> output;
+#pragma omp parallel for
     for (int64_t i = 0; i < N; i++)
         input[i] = N - i;
 
