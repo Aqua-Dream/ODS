@@ -36,7 +36,7 @@ class OneLevel : public ObliDistSort
 {
 public:
     OneLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
-    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo=false);
 private:
     std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
 };
@@ -45,7 +45,7 @@ class TwoLevel : public ObliDistSort
 {
 public:
     TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
-    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo=false);
 private:
     std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
 };

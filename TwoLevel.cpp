@@ -2,6 +2,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <boost/sort/sort.hpp>
+#include <string>
 
 TwoLevel::TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     : ObliDistSort(iom, dataSize, blockSize, sigma)
@@ -50,45 +51,51 @@ std::vector<int64_t> TwoLevel::GetPivots(std::vector<int64_t> &data, SortType so
     return GetQuantile(vs, num_total_pivots);
 }
 
-void TwoLevel::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
+void TwoLevel::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo)
 {
-    Tick("Decide pivots");
+    if (printInfo)
+    {
+        std::string typestr = sorttype == TIGHT ? "Tight" : "Loose";
+        std::cout << "------------ TwoLevel " << typestr << " Sort ------------" << std::endl;
+        Tick("Total");
+        Tick("Decide pivots");
+    }
     auto pivots = GetPivots(input, sorttype);
-    Tick("Decide pivots");
-
-    Tick("Partition");
-    std::vector<std::vector<int64_t> *> bucketsFinal(p0*p);
+    if (printInfo)
+    {
+        Tick("Decide pivots");
+        Tick("First level partition");
+    }
+    std::vector<std::vector<int64_t> *> bucketsFinal(p0 * p);
     std::vector<int64_t> pivotsLevelOne(p0 - 1);
     for (int i = 1; i < p0; i++)
         pivotsLevelOne[i - 1] = pivots[i * p - 1];
     auto bucketsLevelOne = Partition(input, pivotsLevelOne, true);
-
-
-    for(int i=0;i<p0; i++ )
+    if (printInfo)
+    {
+        Tick("First level partition");
+        Tick("Second level partition");
+    }
+    for (int i = 0; i < p0; i++)
     {
         auto bucket = bucketsLevelOne[i];
-        std::vector<int64_t> subpivots (pivots.begin() + i*p, pivots.begin()+(i+1)*p-1);
+        std::vector<int64_t> subpivots(pivots.begin() + i * p, pivots.begin() + (i + 1) * p - 1);
         auto subbuckets = Partition(*bucket, subpivots, false);
-        std::copy_n(subbuckets.begin(), p, bucketsFinal.begin() + i*p);
+        std::copy_n(subbuckets.begin(), p, bucketsFinal.begin() + i * p);
     }
-    Tick("Partition");
-
-  int64_t v = 1;
-    for (auto bucket : bucketsFinal)
+    if (printInfo)
     {
-        std::sort(bucket->begin(), bucket->end());
-        for(auto t: *bucket)
-        {
-        if (t == DUMMY)
-            break;
-        else if (t != v++)
-            throw "Value error!";
-        }
+        Tick("Second level partition");
+        Tick("Final sorting");
     }
-
-    Tick("Final sorting");
     FinalSorting(bucketsFinal, output, sorttype);
-    Tick("Final sorting");
+    if (printInfo)
+    {
+        Tick("Final sorting");
+        Tick("Total");
+        std::cout << "Num IOs: " << (float)m_iom.GetNumIOs() * B / N << "*N/B" << std::endl;
+        m_iom.ClearIO();
+    }
     for (auto vs : bucketsFinal)
         delete vs;
 }

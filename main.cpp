@@ -111,39 +111,17 @@ void OneLevelExp(po::variables_map vm)
     for (int64_t i = 0; i < N; i++)
         input[i] = N - i;
 
-    cout << "---------------- Tight Sort ----------------" << endl;
-    Tick("Total");
-    ods.Sort(input, output, OneLevel::TIGHT);
+    ods.Sort(input, output, OneLevel::TIGHT, true);
     CheckOutput(output, OneLevel::TIGHT);
-    Tick("Total");
-    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    iom.ClearIO();
 
-    cout << "---------------- Loose Sort ----------------" << endl;
-    Tick("Total");
-    ods.Sort(input, output, OneLevel::LOOSE);
+    ods.Sort(input, output, OneLevel::LOOSE, true);
     CheckOutput(output, OneLevel::LOOSE);
-    Tick("Total");
-    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    iom.ClearIO();
-
-    cout << "---------------- Including Duplicates ----------------" << endl;
-    const int X = 12345;
-    fill_n(input.begin(), X, 2 * X);
-    fill_n(input.begin() + X, X, X);
-    fill(input.begin() + 2 * X, input.end(), DUMMY);
-    Tick("Total");
-    ods.Sort(input, output, OneLevel::LOOSE);
-    CheckOutput2(output, OneLevel::LOOSE, X);
-    Tick("Total");
-    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    iom.ClearIO();
 }
 
 void TwoLevelExp(po::variables_map vm)
 {
-    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
-    int64_t N = vm["c"].as<int>() * M;
+    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t) / 2;
+    int64_t N = vm["c"].as<int>() * M * 4;
     int B = vm["block_size"].as<int>();
     int sigma = vm["sigma"].as<int>();
 
@@ -154,39 +132,17 @@ void TwoLevelExp(po::variables_map vm)
     for (int64_t i = 0; i < N; i++)
         input[i] = N - i;
 
-    cout << "---------------- Tight Sort ----------------" << endl;
-    Tick("Total");
-    ods.Sort(input, output, TwoLevel::TIGHT);
+    ods.Sort(input, output, TwoLevel::TIGHT, true);
     CheckOutput(output, TwoLevel::TIGHT);
-    Tick("Total");
-    cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    iom.ClearIO();
 
-    // cout << "---------------- Loose Sort ----------------" << endl;
-    // Tick("Total");
-    // ods.Sort(input, output, TwoLevel::LOOSE);
-    // CheckOutput(output, TwoLevel::LOOSE);
-    // Tick("Total");
-    // cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    // iom.ClearIO();
+    ods.Sort(input, output, TwoLevel::LOOSE, true);
+    CheckOutput(output, TwoLevel::LOOSE);
 
-    // cout << "---------------- Including Duplicates ----------------" << endl;
-    // const int X = 12345;
-    // fill_n(input.begin(), X, 2 * X);
-    // fill_n(input.begin() + X, X, X);
-    // fill(input.begin() + 2 * X, input.end(), DUMMY);
-    // Tick("Total");
-    // ods.Sort(input, output, TwoLevel::LOOSE);
-    // CheckOutput2(output, TwoLevel::LOOSE, X);
-    // Tick("Total");
-    // cout << "Num IOs: " << (float)iom.GetNumIOs() * B / N << "*N/B" << endl;
-    // iom.ClearIO();
 }
 
 int main(int argc, char *argv[])
 {
     auto vm = read_options(argc, argv);
-    cout << "Number of threads: " << NUM_THREADS << endl;
-    OneLevelExp(vm);
+    TwoLevelExp(vm);
     return 0;
 }

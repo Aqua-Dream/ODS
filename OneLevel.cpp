@@ -45,19 +45,35 @@ std::vector<int64_t> OneLevel::GetPivots(std::vector<int64_t> &data, SortType so
     return GetQuantile(sampleforquantile, p0);
 }
 
-void OneLevel::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
+void OneLevel::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo)
 {
-    Tick("Decide pivots");
+    if (printInfo)
+    {
+        std::string typestr = sorttype == TIGHT ? "Tight" : "Loose";
+        std::cout << "------------OneLevel " << typestr << " Sort ------------" << std::endl;
+        Tick("Total");
+        Tick("Decide pivots");
+    }
     auto pivots = GetPivots(input, sorttype);
-    Tick("Decide pivots");
-
-    Tick("Partition");
+    if (printInfo)
+    {
+        Tick("Decide pivots");
+        Tick("Partition");
+    }
     auto buckets = Partition(input, pivots, true);
-    Tick("Partition");
-
-    Tick("Final sorting");
+    if (printInfo)
+    {
+        Tick("Partition");
+        Tick("Final sorting");
+    }
     FinalSorting(buckets, output, sorttype);
-    Tick("Final sorting");
+    if (printInfo)
+    {
+        Tick("Final sorting");
+        Tick("Total");
+        std::cout << "Num IOs: " << (float)m_iom.GetNumIOs() * B / N << "*N/B" << std::endl;
+        m_iom.ClearIO();
+    }
     for (auto vs : buckets)
         delete vs;
 }
