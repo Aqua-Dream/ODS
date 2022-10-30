@@ -14,7 +14,7 @@ OneLevel::OneLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     if (beta <= 0)
         throw std::invalid_argument("Invalid parameters for one-level sorting!");
     alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    while (alpha >= 1)
+    while (1.5 * alpha * N > M)
     {
         beta *= 2;
         alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
