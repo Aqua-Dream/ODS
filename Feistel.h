@@ -12,6 +12,6 @@ public:
 
 private:
     int64_t domain_size;
-    int base, num_rounds;
+    int base, num_rounds, seed;
     int64_t encrypt(int64_t input);
 };
