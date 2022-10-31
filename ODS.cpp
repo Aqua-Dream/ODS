@@ -100,6 +100,7 @@ ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int 
     alpha = beta = p0 = p = -1; // not implemented
 }
 
+// each element is sampled with probability alpha, independently
 void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
 {
     int64_t outPos = 0;
@@ -120,14 +121,23 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
                                    : num_IOs)
         for (int64_t j = 0; j < memload / B; j++)
         {
-            int num_to_sample = binom(rngs[omp_get_thread_num()]);
+            std::mt19937 &rng = rngs[omp_get_thread_num()];
+            int num_to_sample = binom(rng);
             VectorSlice intslice(m_intmem, j * B, B);
             if (sorttype == SortType::TIGHT || num_to_sample > 0)
             {
                 num_IOs++;
                 VectorSlice extslice(input, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
-                std::shuffle(intslice.begin(), intslice.end(), rngs[omp_get_thread_num()]);
+                // randomly take "num_to_sample" elements from the block
+                for (int k = 0; k < num_to_sample; k++)
+                {
+                    int64_t tmp = intslice[k];
+                    std::uniform_int_distribution<int> unif(k, num_to_sample - 1);
+                    int l = unif(rng);
+                    intslice[k] = intslice[l];
+                    intslice[l] = tmp;
+                }
                 std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
             }
         }
