@@ -108,7 +108,7 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
     std::binomial_distribution<int> binom(B, alpha);
     std::vector<std::mt19937> rngs(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; i++)
-        rngs[i] = std::mt19937(dev());
+        rngs[i] = std::mt19937(i);
     for (int64_t extPos = 0; extPos < N; extPos += M)
     {
         int64_t memload = N - extPos;
@@ -162,13 +162,16 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
 {
     int64_t memload = isFirstLevel ? (ceil(M / (1 + 2 * beta) / B) * B) : M; // be the multiple of B
     int64_t data_size = data.size();
+    if (data_size % B != 0)
+        throw std::logic_error("Data size must be the multiple of block size!");
     int64_t num_memloads = ceil((float)data_size / memload);
     int num_buckets = pivots.size() + 1;
     int64_t unit = ceil(float(M) / num_buckets);
     std::vector<uint64_t> posList(num_buckets - 1);
     std::vector<std::vector<int64_t> *> buckets(num_buckets);
+    int64_t bucket_size = ceil((float)(unit * num_memloads) / B) * B;
     for (int i = 0; i < num_buckets; i++)
-        buckets[i] = new std::vector<int64_t>(unit * num_memloads);
+        buckets[i] = new std::vector<int64_t>(bucket_size, DUMMY);
     Feistel fs(data_size / B);
     for (int64_t i = 0; i < num_memloads; i++)
     {
@@ -232,11 +235,11 @@ void ObliDistSort::FinalSorting(std::vector<std::vector<int64_t> *> &buckets, st
         VectorSlice extslice(*buckets[i], 0, bucket_size);
         VectorSlice intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
-        auto realslice = Compact(intslice);
-        boost::sort::block_indirect_sort(realslice.begin(), realslice.end(), NUM_THREADS);
-        int64_t num_to_write = (sorttype == TIGHT) ? realslice.size() : bucket_size;
+        boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
+        VectorSlice _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY));
+        int64_t num_to_write = (sorttype == TIGHT) ? _intslice.size() : bucket_size;
         VectorSlice outslice(out, pos, num_to_write);
-        m_iom.DataTransfer(realslice, outslice);
+        m_iom.DataTransfer(_intslice, outslice);
         pos += num_to_write;
     }
     out.resize(pos);
