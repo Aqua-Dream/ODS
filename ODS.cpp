@@ -100,11 +100,21 @@ ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int 
     alpha = beta = p0 = p = -1; // not implemented
 }
 
+int64_t ObliDistSort::GetSampleSizeEachMemload()
+{
+    return 1.2 * alpha * M; 
+}
+
+int64_t ObliDistSort::GetSampleSize()
+{
+    return GetSampleSizeEachMemload() * ceil((float)N / M); 
+}
+
 // each element is sampled with probability alpha, independently
 void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
 {
     int64_t outPos = 0;
-    output.resize((int64_t)(1.5 * alpha * ceil((float)N / M) * M));
+    output.resize(GetSampleSize());
     std::random_device dev;
     std::binomial_distribution<int> binom(B, alpha);
     std::vector<std::mt19937> rngs(NUM_THREADS);
@@ -147,7 +157,7 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
         int64_t outsize = realslice.size();
         if (sorttype == SortType::TIGHT)
         {
-            outsize = 1.5 * alpha * M;
+            outsize = GetSampleSizeEachMemload();
             if (realslice.size() > outsize)
             {
                 std::cerr << "Data overflow when sampling!" << std::endl;

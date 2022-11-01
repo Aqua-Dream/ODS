@@ -34,7 +34,7 @@ po::variables_map read_options(int argc, char *argv[])
     }
     catch (exception &e)
     {
-        cerr << "error: " << e.what() << endl;
+        cerr << "Error: " << e.what() << endl;
         exit(1);
     }
     catch (...)
@@ -105,7 +105,8 @@ void FailureTest(po::variables_map vm)
 {
     int reps = vm["reps"].as<int>();
     int num_fails = 0;
-#pragma omp parallel for reduction(+:num_fails)
+#pragma omp parallel for reduction(+ \
+                                   : num_fails)
     for (int i = 0; i < reps; i++)
     {
         try
@@ -122,7 +123,7 @@ void FailureTest(po::variables_map vm)
                 input[i] = N - i;
             ods.Sort(input, output, OneLevel::LOOSE);
         }
-        catch(...)
+        catch (...)
         {
             num_fails++;
         }
@@ -133,11 +134,19 @@ void FailureTest(po::variables_map vm)
 int main(int argc, char *argv[])
 {
     auto vm = read_options(argc, argv);
-    if (vm.count("onelevel"))
-        OneLevelExp(vm);
-    if (vm.count("twolevel"))
-        TwoLevelExp(vm);
-    if (vm.count("failure"))
-        FailureTest(vm);
+    try
+    {
+        if (vm.count("onelevel"))
+            OneLevelExp(vm);
+        if (vm.count("twolevel"))
+            TwoLevelExp(vm);
+        if (vm.count("failure"))
+            FailureTest(vm);
+    }
+    catch (exception &e)
+    {
+        cerr << "Error: " << e.what() << endl;
+        exit(1);
+    }
     return 0;
 }

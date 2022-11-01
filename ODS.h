@@ -26,6 +26,8 @@ protected:
     int p0, p, sigma, num_levels;
     IOManager &m_iom;
     std::vector<int64_t> &m_intmem;
+    int64_t GetSampleSizeEachMemload();
+    int64_t GetSampleSize();
     void Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
     std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
     std::vector<std::vector<int64_t> *> Partition(std::vector<int64_t> &data, std::vector<int64_t> &pivots, bool isFirstLevel);

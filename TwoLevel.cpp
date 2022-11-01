@@ -15,7 +15,8 @@ TwoLevel::TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     if (beta <= 0)
         throw std::invalid_argument("Invalid parameters for two-level sorting!");
     alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    while (alpha >= 1)
+    uint64_t sample_size = (int64_t)(1.5 * alpha * ceil((float)N / M) * M);
+    while (alpha >= 2 * beta)
     {
         beta *= 2;
         alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
