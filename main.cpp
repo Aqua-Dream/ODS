@@ -9,6 +9,7 @@
 #include <chrono>
 #include <boost/program_options.hpp>
 #include <omp.h>
+#include "OBS.h"
 
 using namespace std::chrono;
 
@@ -22,7 +23,7 @@ po::variables_map read_options(int argc, char *argv[])
     try
     {
         po::options_description desc("Allowed options");
-        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(8), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(16), "The value N/M")("block_size,B", po::value<int>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>(&NUM_THREADS)->default_value(4), "Number of threads")("sigma,s", po::value<int>()->default_value(40), "Failure probability upper bound: 2^(-sigma)")("onelevel", "OneLevel test")("twolevel", "OneLevel test")("failure", "Failure test")("reps,r", po::value<int>()->default_value(100), "Number of repetitions in failure test.");
+        desc.add_options()("help,h", "Show help message")("m,m", po::value<int>()->default_value(8), "Internal memory size (MB)")("c,c", po::value<int>()->default_value(16), "The value N/M")("block_size,B", po::value<int>()->default_value(4), "Block size (in terms of elements)")("num_threads,T", po::value<int>(&NUM_THREADS)->default_value(4), "Number of threads")("sigma,s", po::value<int>()->default_value(40), "Failure probability upper bound: 2^(-sigma)")("onelevel", "OneLevel test")("twolevel", "OneLevel test")("failure", "Failure test")("reps,r", po::value<int>()->default_value(100), "Number of repetitions in failure test.")("bucket", "Bucket sort");
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
         if (vm.count("help"))
@@ -131,6 +132,26 @@ void FailureTest(po::variables_map vm)
     cout << num_fails << " fails out of " << reps << " trials." << endl;
 }
 
+void BucketExp(po::variables_map vm)
+{
+    int64_t M = (vm["m"].as<int>() << 20) / sizeof(int64_t);
+    int64_t N = vm["c"].as<int>() * M;
+    int B = vm["block_size"].as<int>();
+    int sigma = vm["sigma"].as<int>();
+
+    IOManager iom(M, B);
+    ObliBucketSort obs(iom, N, B, sigma);
+    vector<int64_t> input(N);
+    vector<int64_t> output;
+#pragma omp parallel for
+    for (int64_t i = 0; i < N; i++)
+        input[i] = N - i;
+
+    obs.Sort(input, output, true);
+    CheckOutput(output, OneLevel::TIGHT);
+
+}
+
 int main(int argc, char *argv[])
 {
     auto vm = read_options(argc, argv);
@@ -142,6 +163,8 @@ int main(int argc, char *argv[])
             TwoLevelExp(vm);
         if (vm.count("failure"))
             FailureTest(vm);
+        if (vm.count("bucket"))
+            BucketExp(vm);
     }
     catch (exception &e)
     {

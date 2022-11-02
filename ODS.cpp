@@ -119,7 +119,7 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
     std::binomial_distribution<int> binom(B, alpha);
     std::vector<std::mt19937> rngs(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; i++)
-        rngs[i] = std::mt19937(i);
+        rngs[i] = std::mt19937(dev());
     for (int64_t extPos = 0; extPos < N; extPos += M)
     {
         int64_t memload = N - extPos;
