@@ -29,16 +29,10 @@ ObliBucketSort::ObliBucketSort(IOManager &iom, int64_t dataSize, int blockSize, 
     Z = 6 * (kappa + log(2.0 * N));
     Z = 6 * (kappa + log(2.0 * N / Z));
     Z = ceil(Z / B) * B;
-}
-
-void ObliBucketSort::RandomBinPermute(std::vector<int64_t> &input, std::vector<int64_t> &output)
-{
     int n = ceil(log2(2.0 * N / Z));
     int m = n / 2;
     if (m > floor(log2(M / Z)))
         throw std::logic_error("Input size too large: not implemented yet!");
-    FirstLevelPermute(input, output);
-    SecondLevelPermute(output);
 }
 
 void ObliBucketSort::FirstLevelPermute(std::vector<int64_t> &input, std::vector<int64_t> &output)
@@ -102,12 +96,18 @@ void ObliBucketSort::Sort(std::vector<int64_t> &input, std::vector<int64_t> &out
     {
         std::cout << "------------Bucket Sort ------------" << std::endl;
         Tick("Total");
-        Tick("Random bin permutation");
+        Tick("First level permutation");
     }
-    RandomBinPermute(input, output);
+    FirstLevelPermute(input, output);
     if (printInfo)
     {
-        Tick("Random bin permutation");
+        Tick("First level permutation");
+        Tick("Second level permutation");
+    }
+    SecondLevelPermute(output);
+    if (printInfo)
+    {
+        Tick("Second level permutation");
         Tick("Final sort");
     }
     boost::sort::block_indirect_sort(output.begin(), output.end(), NUM_THREADS);
