@@ -6,20 +6,6 @@
 #include <algorithm>
 #include <boost/sort/sort.hpp>
 
-// void RandomBinAssign(VectorSlice &vs, int64_t num_bins)
-// {
-//     // no need to add I/O cost, since it can actually be generated in memory at the first level in the fly
-//     std::random_device dev;
-//     std::vector<std::mt19937> rngs(NUM_THREADS);
-//     std::uniform_int_distribution<int64_t> unif(0, num_bins - 1);
-//     int64_t size = vs.size();
-//     for (int i = 0; i < NUM_THREADS; i++)
-//         rngs[i] = std::mt19937(dev());
-// #pragma omp parallel for
-//     for (int64_t i = 0; i < size; i++)
-//         vs[i] = unif(rngs[omp_get_thread_num()]);
-// }
-
 ObliBucketSort::ObliBucketSort(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     : N{dataSize}, M{(int64_t)iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}, sigma{sigma}
 {

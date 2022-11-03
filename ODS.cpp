@@ -10,6 +10,7 @@
 #include <boost/math/tools/roots.hpp>
 #include <boost/math/special_functions/pow.hpp>
 
+
 struct equation_to_solve
 {
     // Functor returning both 1st and 2nd derivatives.
@@ -102,12 +103,12 @@ ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int 
 
 int64_t ObliDistSort::GetSampleSizeEachMemload()
 {
-    return 1.2 * alpha * M; 
+    return 1.2 * alpha * M;
 }
 
 int64_t ObliDistSort::GetSampleSize()
 {
-    return GetSampleSizeEachMemload() * ceil((float)N / M); 
+    return GetSampleSizeEachMemload() * ceil_divide(N, M);
 }
 
 // each element is sampled with probability alpha, independently
@@ -184,12 +185,12 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
     int64_t data_size = data.size();
     if (data_size % B != 0)
         throw std::logic_error("Data size must be the multiple of block size!");
-    int64_t num_memloads = ceil((float)data_size / memload);
+    int64_t num_memloads = ceil_divide(data_size, memload);
     int num_buckets = pivots.size() + 1;
     int64_t unit = ceil(float(M) / num_buckets);
     std::vector<uint64_t> posList(num_buckets - 1);
     std::vector<std::vector<int64_t> *> buckets(num_buckets);
-    int64_t bucket_size = ceil((float)(unit * num_memloads) / B) * B;
+    int64_t bucket_size = ceil_divide(unit * num_memloads, B) * B;
     for (int i = 0; i < num_buckets; i++)
         buckets[i] = new std::vector<int64_t>(bucket_size, DUMMY);
     Feistel fs(data_size / B);
@@ -226,6 +227,11 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
                 int64_t endPos = (j == num_buckets - 1) ? _intslice.size() : posList[j];
                 VectorSlice intBucket(_intslice, prevPos, endPos - prevPos);
                 VectorSlice extBucket(*buckets[j], unit * i, unit);
+                if (buckets[j]->size() < unit * (i + 1))
+                {
+                    std::cerr << "j=" << j << ", buckets[j]->size()=" << buckets[j]->size() << std::endl;
+                    std::cerr << "i=" << i << ", unit*(i+1)=" << unit * (i + 1) << std::endl;
+                }
                 if (intBucket.size() > unit)
                 {
                     std::cerr << "Bucket overflow!" << std::endl;
@@ -234,7 +240,7 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
                 extBucket.CopyDataFrom(intBucket, true);
             }
         }
-        m_iom.m_numIOs += num_buckets * ceil((float)unit / B);
+        m_iom.m_numIOs += num_buckets * ceil_divide(unit, B);
     }
     return buckets;
 }

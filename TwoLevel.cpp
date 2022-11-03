@@ -15,7 +15,7 @@ TwoLevel::TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     if (beta <= 0)
         throw std::invalid_argument("Invalid parameters for two-level sorting!");
     alpha = (kappa + 1 + log(N)) * 4 * (1 + 1 / beta) * (1 / beta + 2) / M;
-    uint64_t sample_size = (int64_t)(1.5 * alpha * ceil((float)N / M) * M);
+    uint64_t sample_size = (int64_t)(1.5 * alpha * ceil_divide(N, M) * M);
     while (alpha >= 2 * beta)
     {
         beta *= 2;
@@ -29,11 +29,11 @@ TwoLevel::TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
     if (p < 2)
         p = 2;
     int64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
-    int64_t num_memloads = ceil((float)N / memload);
+    int64_t num_memloads = ceil_divide(N, memload);
     int64_t unit = ceil(float(M) / p0);
     int64_t bucketsize = unit * num_memloads;
     memload = M;
-    num_memloads = ceil((float)bucketsize / memload);
+    num_memloads = ceil_divide(bucketsize, memload);
     unit = ceil(float(M) / p);
     bucketsize = unit * num_memloads;
     if (bucketsize > M)

@@ -32,3 +32,11 @@ void Tick(std::string name)
     else
         tick_table[name] = std::chrono::system_clock::now();
 }
+
+int64_t ceil_divide(int64_t n, int64_t q)
+{
+    int64_t p = n / q;
+    if (n % q == 0)
+        return p;
+    return p + 1;
+}

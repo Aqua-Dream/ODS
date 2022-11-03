@@ -8,3 +8,5 @@ void Tick(std::string name);
 
 const int64_t DUMMY = INT64_MAX; 
 extern int NUM_THREADS;
+
+int64_t ceil_divide(int64_t n, int64_t q);

@@ -23,7 +23,7 @@ OneLevel::OneLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
         throw std::invalid_argument("Invalid parameters for one-level sorting!");
     p0 = (int)ceil((1 + 2 * beta) * N / M);
     int64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
-    int64_t num_memloads = ceil((float)N / memload);
+    int64_t num_memloads = ceil_divide(N, memload);
     int64_t unit = ceil(float(M) / p0);
     if (unit * num_memloads > M)
         p0++;
