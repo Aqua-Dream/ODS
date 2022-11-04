@@ -5,49 +5,77 @@
 #include "global.h"
 
 double argsolver(double a);
-std::vector<int64_t> GetQuantile(VectorSlice vs, int q);
 
+// return the q-quantile of the first n elements in data
+// length of quantile: q-1
+template <typename T>
+std::vector<T> GetQuantile(VectorSlice<T> vs, int q)
+{
+    int64_t n = vs.size();
+    int64_t step = n / q;
+    int remain = n % q;
+    std::vector<T> pivots(q - 1);
+    int dataIdx = -1;
+    int i = 0;
+    for (; i < remain; i++)
+    {
+        dataIdx += step + 1;
+        pivots[i] = vs[dataIdx];
+    }
+    for (; i < q - 1; i++)
+    {
+        dataIdx += step;
+        pivots[i] = vs[dataIdx];
+    }
+    return pivots;
+}
+
+enum SortType
+{
+    TIGHT,
+    LOOSE
+};
+
+template <typename T>
 class ObliDistSort
 {
 public:
-    enum SortType
-    {
-        TIGHT,
-        LOOSE
-    };
     // failure probability bounded by 2^(-sigma)
-    ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
-    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
+    ObliDistSort(IOManager<T> &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<T> &input, std::vector<T> &output, SortType sorttype);
 
 protected:
     int64_t N, M;
     int B;
     double alpha, beta;
     int p0, p, sigma, num_levels;
-    IOManager &m_iom;
-    std::vector<int64_t> &m_intmem;
+    IOManager<T> &m_iom;
+    std::vector<T> &m_intmem;
     int64_t GetSampleSizeEachMemload();
     int64_t GetSampleSize();
-    void Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype);
-    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
-    std::vector<std::vector<int64_t> *> Partition(std::vector<int64_t> &data, std::vector<int64_t> &pivots, bool isFirstLevel);
-    void FinalSorting(std::vector<std::vector<int64_t> *> &buckets, std::vector<int64_t> &out, SortType sorttype);
+    void Sample(std::vector<T> &input, std::vector<T> &output, SortType sorttype);
+    std::vector<T> GetPivots(std::vector<T> &data, SortType sorttype);
+    std::vector<std::vector<T> *> Partition(std::vector<T> &data, std::vector<T> &pivots, bool isFirstLevel);
+    void FinalSorting(std::vector<std::vector<T> *> &buckets, std::vector<T> &out, SortType sorttype);
 };
 
-class OneLevel : public ObliDistSort
+template <typename T>
+class OneLevel : public ObliDistSort<T>
 {
+
 public:
-    OneLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
-    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo=false);
+    OneLevel(IOManager<T> &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<T> &input, std::vector<T> &output, SortType sorttype, bool printInfo=false);
 private:
-    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
+    std::vector<T> GetPivots(std::vector<T> &data, SortType sorttype);
 };
 
-class TwoLevel : public ObliDistSort
+template <typename T>
+class TwoLevel : public ObliDistSort<T>
 {
 public:
-    TwoLevel(IOManager &iom, int64_t dataSize, int blockSize, int sigma);
-    void Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype, bool printInfo=false);
+    TwoLevel(IOManager<T> &iom, int64_t dataSize, int blockSize, int sigma);
+    void Sort(std::vector<T> &input, std::vector<T> &output, SortType sorttype, bool printInfo=false);
 private:
-    std::vector<int64_t> GetPivots(std::vector<int64_t> &data, SortType sorttype);
+    std::vector<T> GetPivots(std::vector<T> &data, SortType sorttype);
 };

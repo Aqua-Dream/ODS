@@ -10,7 +10,6 @@
 #include <boost/math/tools/roots.hpp>
 #include <boost/math/special_functions/pow.hpp>
 
-
 struct equation_to_solve
 {
     // Functor returning both 1st and 2nd derivatives.
@@ -50,50 +49,29 @@ double argsolver(double a)
     return result;
 }
 
-// return the q-quantile of the first n elements in data
-// length of quantile: q-1
-std::vector<int64_t> GetQuantile(VectorSlice vs, int q)
-{
-    int64_t n = vs.size();
-    int64_t step = n / q;
-    int remain = n % q;
-    std::vector<int64_t> pivots(q - 1);
-    int dataIdx = -1;
-    int i = 0;
-    for (; i < remain; i++)
-    {
-        dataIdx += step + 1;
-        pivots[i] = vs[dataIdx];
-    }
-    for (; i < q - 1; i++)
-    {
-        dataIdx += step;
-        pivots[i] = vs[dataIdx];
-    }
-    return pivots;
-}
-
 // move dummy elements to the end; return the slice of real elements
-VectorSlice Compact(VectorSlice data)
+template <typename T>
+VectorSlice<T> Compact(VectorSlice<T> data)
 {
     int64_t i = 0;
     int64_t j = data.size() - 1;
     while (1)
     {
-        while (i < j && data[i] != DUMMY)
+        while (i < j && data[i] != DUMMY<T>())
             i++; // find the first dummy from left
-        while (i < j && data[j] == DUMMY)
+        while (i < j && data[j] == DUMMY<T>())
             j--; // find the first non-dummy from right
         if (i >= j)
             break;
-        int64_t tmp = data[i];
+        T tmp = data[i];
         data[i] = data[j];
         data[j] = tmp;
     }
-    return VectorSlice(data, 0, i);
+    return VectorSlice<T>(data, 0, i);
 }
 
-ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int sigma)
+template <typename T>
+ObliDistSort<T>::ObliDistSort(IOManager<T> &iom, int64_t dataSize, int blockSize, int sigma)
     : N{dataSize}, M{(int64_t)iom.GetInternalMemory().size()}, B{blockSize}, m_iom{iom}, m_intmem{iom.GetInternalMemory()}, sigma{sigma}
 {
     if (M % B != 0 || N % B != 0)
@@ -101,18 +79,21 @@ ObliDistSort::ObliDistSort(IOManager &iom, int64_t dataSize, int blockSize, int 
     alpha = beta = p0 = p = -1; // not implemented
 }
 
-int64_t ObliDistSort::GetSampleSizeEachMemload()
+template <typename T>
+int64_t ObliDistSort<T>::GetSampleSizeEachMemload()
 {
     return 1.2 * alpha * M;
 }
 
-int64_t ObliDistSort::GetSampleSize()
+template <typename T>
+int64_t ObliDistSort<T>::GetSampleSize()
 {
     return GetSampleSizeEachMemload() * ceil_divide(N, M);
 }
 
 // each element is sampled with probability alpha, independently
-void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
+template <typename T>
+void ObliDistSort<T>::Sample(std::vector<T> &input, std::vector<T> &output, SortType sorttype)
 {
     int64_t outPos = 0;
     output.resize(GetSampleSize());
@@ -127,33 +108,33 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
         if (memload > M)
             memload = M;
         int64_t num_IOs = 0;
-        std::fill(m_intmem.begin(), m_intmem.end(), DUMMY);
+        std::fill(m_intmem.begin(), m_intmem.end(), DUMMY<T>());
 #pragma omp parallel for reduction(+ \
                                    : num_IOs)
         for (int64_t j = 0; j < memload / B; j++)
         {
             std::mt19937 &rng = rngs[omp_get_thread_num()];
             int num_to_sample = binom(rng);
-            VectorSlice intslice(m_intmem, j * B, B);
+            VectorSlice<T> intslice(m_intmem, j * B, B);
             if (sorttype == SortType::TIGHT || num_to_sample > 0)
             {
                 num_IOs++;
-                VectorSlice extslice(input, extPos + j * B, B);
+                VectorSlice<T> extslice(input, extPos + j * B, B);
                 intslice.CopyDataFrom(extslice);
                 // randomly take "num_to_sample" elements from the block
                 for (int k = 0; k < num_to_sample; k++)
                 {
-                    int64_t tmp = intslice[k];
+                    auto tmp = intslice[k];
                     std::uniform_int_distribution<int> unif(k, num_to_sample - 1);
                     int l = unif(rng);
                     intslice[k] = intslice[l];
                     intslice[l] = tmp;
                 }
-                std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY);
+                std::fill(intslice.begin() + num_to_sample, intslice.end(), DUMMY<T>());
             }
         }
         m_iom.m_numIOs += num_IOs;
-        VectorSlice intslice(m_intmem, 0, memload);
+        VectorSlice<T> intslice(m_intmem, 0, memload);
         auto realslice = Compact(intslice);
         int64_t outsize = realslice.size();
         if (sorttype == SortType::TIGHT)
@@ -165,21 +146,23 @@ void ObliDistSort::Sample(std::vector<int64_t> &input, std::vector<int64_t> &out
                 exit(-1);
             }
         }
-        VectorSlice outslice(output, outPos, outsize);
+        VectorSlice<T> outslice(output, outPos, outsize);
         m_iom.DataTransfer(realslice, outslice);
         outPos += outsize;
     }
     int64_t dummyToPad = outPos % B > 0 ? B - outPos % B : 0;
     output.resize(outPos + dummyToPad);
-    std::fill_n(output.begin() + outPos, dummyToPad, DUMMY);
+    std::fill_n(output.begin() + outPos, dummyToPad, DUMMY<T>());
 }
 
-std::vector<int64_t> ObliDistSort::GetPivots(std::vector<int64_t> &data, SortType sorttype)
+template <typename T>
+std::vector<T> ObliDistSort<T>::GetPivots(std::vector<T> &data, SortType sorttype)
 {
     throw std::logic_error("Sorting for general ODS has not been implemented yet!");
 }
 
-std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t> &data, std::vector<int64_t> &pivots, bool isFirstLevel)
+template <typename T>
+std::vector<std::vector<T> *> ObliDistSort<T>::Partition(std::vector<T> &data, std::vector<T> &pivots, bool isFirstLevel)
 {
     int64_t memload = isFirstLevel ? (ceil(M / (1 + 2 * beta) / B) * B) : M; // be the multiple of B
     int64_t data_size = data.size();
@@ -188,17 +171,17 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
     int64_t num_memloads = ceil_divide(data_size, memload);
     int num_buckets = pivots.size() + 1;
     int64_t unit = ceil(float(M) / num_buckets);
-    std::vector<uint64_t> posList(num_buckets - 1);
-    std::vector<std::vector<int64_t> *> buckets(num_buckets);
+    std::vector<int64_t> posList(num_buckets - 1);
+    std::vector<std::vector<T> *> buckets(num_buckets);
     int64_t bucket_size = ceil_divide(unit * num_memloads, B) * B;
     for (int i = 0; i < num_buckets; i++)
-        buckets[i] = new std::vector<int64_t>(bucket_size, DUMMY);
+        buckets[i] = new std::vector<T>(bucket_size, DUMMY<T>());
     Feistel fs(data_size / B);
     for (int64_t i = 0; i < num_memloads; i++)
     {
         int64_t actual_load = (data_size < (i + 1) * memload) ? (data_size - i * memload) : memload;
         int64_t blocks_thisload = actual_load / B;
-        VectorSlice intslice(m_intmem, 0, actual_load);
+        VectorSlice<T> intslice(m_intmem, 0, actual_load);
 #pragma omp parallel for
         for (int64_t j = 0; j < blocks_thisload; j++)
         {
@@ -210,8 +193,7 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
         m_iom.m_numIOs += blocks_thisload;
         boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
         // remove dummy
-        VectorSlice _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY));
-        std::vector<int64_t>::iterator iprevPos = _intslice.begin();
+        VectorSlice<T> _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY<T>()));
 #pragma omp parallel
         {
 #pragma omp for
@@ -225,8 +207,8 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
             {
                 int64_t prevPos = (j == 0) ? 0 : posList[j - 1];
                 int64_t endPos = (j == num_buckets - 1) ? _intslice.size() : posList[j];
-                VectorSlice intBucket(_intslice, prevPos, endPos - prevPos);
-                VectorSlice extBucket(*buckets[j], unit * i, unit);
+                VectorSlice<T> intBucket(_intslice, prevPos, endPos - prevPos);
+                VectorSlice<T> extBucket(*buckets[j], unit * i, unit);
                 if (buckets[j]->size() < unit * (i + 1))
                 {
                     std::cerr << "j=" << j << ", buckets[j]->size()=" << buckets[j]->size() << std::endl;
@@ -245,7 +227,8 @@ std::vector<std::vector<int64_t> *> ObliDistSort::Partition(std::vector<int64_t>
     return buckets;
 }
 
-void ObliDistSort::FinalSorting(std::vector<std::vector<int64_t> *> &buckets, std::vector<int64_t> &out, SortType sorttype)
+template <typename T>
+void ObliDistSort<T>::FinalSorting(std::vector<std::vector<T> *> &buckets, std::vector<T> &out, SortType sorttype)
 {
     int64_t bucket_size = buckets[0]->size();
     if (bucket_size > M)
@@ -258,20 +241,24 @@ void ObliDistSort::FinalSorting(std::vector<std::vector<int64_t> *> &buckets, st
     int64_t pos = 0;
     for (int64_t i = 0; i < num_buckets; i++)
     {
-        VectorSlice extslice(*buckets[i], 0, bucket_size);
-        VectorSlice intslice(m_intmem, 0, bucket_size);
+        VectorSlice<T> extslice(*buckets[i], 0, bucket_size);
+        VectorSlice<T> intslice(m_intmem, 0, bucket_size);
         m_iom.DataTransfer(extslice, intslice);
         boost::sort::block_indirect_sort(intslice.begin(), intslice.end(), NUM_THREADS);
-        VectorSlice _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY));
+        VectorSlice<T> _intslice(intslice, intslice.begin(), std::lower_bound(intslice.begin(), intslice.end(), DUMMY<T>()));
         int64_t num_to_write = (sorttype == TIGHT) ? _intslice.size() : bucket_size;
-        VectorSlice outslice(out, pos, num_to_write);
+        VectorSlice<T> outslice(out, pos, num_to_write);
         m_iom.DataTransfer(_intslice, outslice);
         pos += num_to_write;
     }
     out.resize(pos);
 }
 
-void ObliDistSort::Sort(std::vector<int64_t> &input, std::vector<int64_t> &output, SortType sorttype)
+template <typename T>
+void ObliDistSort<T>::Sort(std::vector<T> &input, std::vector<T> &output, SortType sorttype)
 {
     throw std::logic_error("Sorting for general ODS has not been implemented yet!");
 }
+
+template class ObliDistSort<int32_t>;
+template class ObliDistSort<int64_t>;

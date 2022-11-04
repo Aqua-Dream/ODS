@@ -40,7 +40,7 @@ void ObliBucketSort::FirstLevelPermute(std::vector<int64_t> &input, std::vector<
         VectorSlice realint(m_intmem, 0, num_reals);
         VectorSlice intslice(m_intmem, 0, eles_perload);
         m_iom.DataTransfer(dataext, realint);
-        std::fill(realint.end(), intslice.end(), DUMMY);
+        std::fill(realint.end(), intslice.end(), DUMMY<T>());
         std::shuffle(intslice.begin(), intslice.end(), rng);
         VectorSlice outslice(output, i * eles_perload, eles_perload);
         m_iom.DataTransfer(intslice, outslice);
