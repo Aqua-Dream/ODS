@@ -35,14 +35,18 @@ TwoLevel<T>::TwoLevel(IOManager<T> &iom, int64_t dataSize, int blockSize, int si
         p = 2;
     int64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
     int64_t num_memloads = ceil_divide(N, memload);
-    int64_t unit = ceil(float(M) / p0);
+    int64_t unit = ceil((double)M / p0);
     int64_t bucketsize = unit * num_memloads;
     memload = M;
     num_memloads = ceil_divide(bucketsize, memload);
-    unit = ceil(float(M) / p);
+    unit = ceil((double)M / p);
     bucketsize = unit * num_memloads;
-    if (bucketsize > M)
+    while (bucketsize > M)
+    {
         p++;
+        unit = ceil((double)M / p);
+        bucketsize = unit * num_memloads;
+    }
     this->p = p;
     this->p0 = p0;
     this->alpha = alpha;
@@ -107,7 +111,7 @@ void TwoLevel<T>::Sort(std::vector<T> &input, std::vector<T> &output, SortType s
     {
         Tick("Final sorting");
         Tick("Total");
-        std::cout << "Num IOs: " << (float)this->m_iom.GetNumIOs() * this->B / this->N << "*N/B" << std::endl;
+        std::cout << "Num IOs: " << (double)this->m_iom.GetNumIOs() * this->B / this->N << "*N/B" << std::endl;
         this->m_iom.ClearIO();
     }
     for (auto vs : bucketsFinal)

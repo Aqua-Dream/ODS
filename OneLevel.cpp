@@ -28,9 +28,12 @@ OneLevel<T>::OneLevel(IOManager<T> &iom, int64_t dataSize, int blockSize, int si
     int p0 = (int)ceil((1 + 2 * beta) * N / M);
     int64_t memload = ceil(M / (1 + 2 * beta) / B) * B; // be the multiple of B
     int64_t num_memloads = ceil_divide(N, memload);
-    int64_t unit = ceil(float(M) / p0);
-    if (unit * num_memloads > M)
+    int64_t unit = ceil((double)M / p0);
+    while (unit * num_memloads > M)
+    {
         p0++;
+        unit = ceil((double)M / p0);
+    }
     this->p0 = p0;
     this->alpha = alpha;
     this->beta = beta;
@@ -80,7 +83,7 @@ void OneLevel<T>::Sort(std::vector<T> &input, std::vector<T> &output, SortType s
     {
         Tick("Final sorting");
         Tick("Total");
-        std::cout << "Num IOs: " << (float)this->m_iom.GetNumIOs() * this->B / this->N << "*N/B" << std::endl;
+        std::cout << "Num IOs: " << (double)this->m_iom.GetNumIOs() * this->B / this->N << "*N/B" << std::endl;
         this->m_iom.ClearIO();
     }
     for (auto vs : buckets)

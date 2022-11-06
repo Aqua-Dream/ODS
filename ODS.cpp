@@ -170,7 +170,7 @@ std::vector<std::vector<T> *> ObliDistSort<T>::Partition(std::vector<T> &data, s
         throw std::logic_error("Data size must be the multiple of block size!");
     int64_t num_memloads = ceil_divide(data_size, memload);
     int num_buckets = pivots.size() + 1;
-    int64_t unit = ceil(float(M) / num_buckets);
+    int64_t unit = ceil((double)M / num_buckets);
     std::vector<int64_t> posList(num_buckets - 1);
     std::vector<std::vector<T> *> buckets(num_buckets);
     int64_t bucket_size = ceil_divide(unit * num_memloads, B) * B;
