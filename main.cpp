@@ -109,20 +109,21 @@ void FailureTest(po::variables_map vm)
 {
     int reps = vm["reps"].as<int>();
     int num_fails = 0;
+    int64_t M = ((int64_t)(vm["m"].as<int>()) << 20) / sizeof(T);
+    int64_t N = vm["c"].as<int>() * M;
+    int B = vm["block_size"].as<int>();
+    int sigma = vm["sigma"].as<int>();
+    vector<T> input(N);
+#pragma omp parallel for
+    for (int64_t i = 0; i < N; i++)
+        input[i] = N - i;
+    IOManager<T> iom(M, B);
+    OneLevel<T> ods(iom, N, B, sigma);
+    vector<T> output;
     for (int i = 0; i < reps; i++)
     {
         try
         {
-            int64_t M = (vm["m"].as<int>() << 20) / sizeof(T);
-            int64_t N = vm["c"].as<int>() * M;
-            int B = vm["block_size"].as<int>();
-            int sigma = vm["sigma"].as<int>();
-            IOManager<T> iom(M, B);
-            OneLevel<T> ods(iom, N, B, sigma);
-            vector<T> input(N);
-            vector<T> output;
-            for (int64_t i = 0; i < N; i++)
-                input[i] = N - i;
             ods.Sort(input, output, LOOSE);
         }
         catch (...)
@@ -166,7 +167,10 @@ int main(int argc, char *argv[])
         {
             cerr << "Error: " << e.what() << endl;
         }
-        catch (...) {}
+        catch (...) 
+        {
+            cerr << "Unknown error occurs." << endl;
+        }
     }
     return 0;
 }
