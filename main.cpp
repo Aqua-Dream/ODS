@@ -108,11 +108,12 @@ template <typename T>
 void FailureTest(po::variables_map vm)
 {
     int reps = vm["reps"].as<int>();
-    int num_fails = 0;
+    int num_total_fails = 0;
     int64_t M = ((int64_t)(vm["m"].as<int>()) << 20) / sizeof(T);
     int64_t N = vm["c"].as<int>() * M;
     int B = vm["block_size"].as<int>();
     int sigma = vm["sigma"].as<int>();
+    const int step = 100;
     vector<T> input(N);
 #pragma omp parallel for
     for (int64_t i = 0; i < N; i++)
@@ -120,18 +121,25 @@ void FailureTest(po::variables_map vm)
     IOManager<T> iom(M, B);
     OneLevel<T> ods(iom, N, B, sigma);
     vector<T> output;
-    for (int i = 0; i < reps; i++)
+    reps = ceil_divide(reps, step) * step;
+    for (int i = 0; i < reps/step; i++)
     {
-        try
+        int num_step_fails = 0;
+        for (int j = 0; j < step; j++)
         {
-            ods.Sort(input, output, LOOSE);
+            try
+            {
+                ods.Sort(input, output, LOOSE);
+            }
+            catch (...)
+            {
+                num_step_fails++;
+            }
         }
-        catch (...)
-        {
-            num_fails++;
-        }
+        cout << num_step_fails << " fails in the " << i+1 << "-th " << step << " trials." << endl;
+        num_total_fails += num_step_fails;
     }
-    cout << num_fails << " fails out of " << reps << " trials." << endl;
+    cout << num_total_fails << " fails out of " << reps << " trials." << endl;
 }
 
 using FP = void (*)(po::variables_map);
@@ -167,7 +175,7 @@ int main(int argc, char *argv[])
         {
             cerr << "Error: " << e.what() << endl;
         }
-        catch (...) 
+        catch (...)
         {
             cerr << "Unknown error occurs." << endl;
         }
